@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Local Agent OS</title>
+    <style>
+      body { font-family: Inter, Arial, sans-serif; margin: 0; background: #0b1020; color: #e2e8f0; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px; }
+      .card { background: #101827; border: 1px solid #1f2937; border-radius: 12px; padding: 12px; }
+      textarea, input, select { width: 100%; background: #020617; color: #e2e8f0; border: 1px solid #334155; border-radius: 8px; padding: 8px; }
+      button { background: #2563eb; color: white; border: 0; border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+      button.danger { background: #dc2626; }
+      pre { white-space: pre-wrap; background: #020617; padding: 8px; border-radius: 8px; max-height: 260px; overflow: auto; }
+      .muted { color: #94a3b8; font-size: 12px; }
+      .row { display: flex; gap: 8px; margin-bottom: 8px; }
+      .col { flex: 1; }
+    </style>
+  </head>
+  <body>
+    <div class="grid">
+      <section class="card">
+        <h3>Provider + Security</h3>
+        <div class="row"><input id="openai" placeholder="OpenAI API key" /></div>
+        <div class="row"><input id="anthropic" placeholder="Anthropic API key" /></div>
+        <div class="row">
+          <label><input type="checkbox" id="safeMode" checked /> Safe mode</label>
+        </div>
+        <button onclick="saveConfig()">Save</button>
+      </section>
+
+      <section class="card">
+        <h3>Task Submit</h3>
+        <div class="row">
+          <select id="provider"><option>openai</option><option>anthropic</option></select>
+          <input id="model" value="gpt-4.1-mini" />
+        </div>
+        <div class="row">
+          <input id="maxIterations" type="number" value="3" min="1" max="8" />
+          <label><input type="checkbox" id="autoRun" checked /> auto-run</label>
+        </div>
+        <textarea id="prompt" rows="5" placeholder="Describe a goal..."></textarea>
+        <button onclick="createTask()">Start Task</button>
+      </section>
+
+      <section class="card">
+        <h3>Action Approval + Timeline</h3>
+        <div class="row">
+          <input id="approvalAction" placeholder="action id" />
+          <button onclick="approve(true)">Approve</button>
+          <button class="danger" onclick="approve(false)">Deny</button>
+        </div>
+        <pre id="timeline"></pre>
+      </section>
+
+      <section class="card">
+        <h3>Live Logs (WebSocket)</h3>
+        <pre id="logs"></pre>
+      </section>
+
+      <section class="card">
+        <h3>Memory Search</h3>
+        <div class="row">
+          <input id="memoryQuery" placeholder="search memory" />
+          <button onclick="searchMemory()">Search</button>
+        </div>
+        <pre id="memory"></pre>
+      </section>
+
+      <section class="card">
+        <h3>Schedulers + Plugins</h3>
+        <div class="row">
+          <input id="schedulePrompt" placeholder="scheduled prompt" />
+          <input id="interval" type="number" value="300" min="5" />
+        </div>
+        <button onclick="createSchedule()">Add Schedule</button>
+        <pre id="schedules"></pre>
+        <pre id="plugins"></pre>
+      </section>
+    </div>
+
+    <script>
+      const logs = document.getElementById('logs');
+      const timeline = document.getElementById('timeline');
+
+      async function api(path, method='GET', body) {
+        const response = await fetch(path, {
+          method,
+          headers: {'Content-Type': 'application/json'},
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        return await response.json();
+      }
+
+      async function saveConfig() {
+        await api('/api/config', 'POST', {
+          openai_api_key: document.getElementById('openai').value || null,
+          anthropic_api_key: document.getElementById('anthropic').value || null,
+        });
+        await api('/api/safety', 'POST', { safe_mode: document.getElementById('safeMode').checked });
+      }
+
+      async function createTask() {
+        await api('/api/tasks', 'POST', {
+          prompt: document.getElementById('prompt').value,
+          provider: document.getElementById('provider').value,
+          model: document.getElementById('model').value,
+          auto_run: document.getElementById('autoRun').checked,
+          max_iterations: Number(document.getElementById('maxIterations').value),
+        });
+      }
+
+      async function approve(approveDecision) {
+        const actionId = document.getElementById('approvalAction').value;
+        await api('/api/approvals', 'POST', { action_id: actionId, approve: approveDecision });
+      }
+
+      async function searchMemory() {
+        const query = document.getElementById('memoryQuery').value;
+        const data = await api('/api/memory/search', 'POST', { prompt: query, limit: 10 });
+        document.getElementById('memory').textContent = JSON.stringify(data, null, 2);
+      }
+
+      async function createSchedule() {
+        await api('/api/schedules', 'POST', {
+          prompt: document.getElementById('schedulePrompt').value,
+          provider: document.getElementById('provider').value,
+          model: document.getElementById('model').value,
+          interval_seconds: Number(document.getElementById('interval').value),
+        });
+        refreshMeta();
+      }
+
+      async function refreshMeta() {
+        const tasks = await api('/api/tasks');
+        timeline.textContent = JSON.stringify(tasks.map(t => ({
+          id: t.id,
+          status: t.status,
+          current_action: t.current_action,
+          iterations: t.iterations,
+          action_decisions: t.action_decisions,
+        })), null, 2);
+        document.getElementById('schedules').textContent = JSON.stringify(await api('/api/schedules'), null, 2);
+        document.getElementById('plugins').textContent = JSON.stringify(await api('/api/plugins'), null, 2);
+      }
+
+      function connectWS() {
+        const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/logs');
+        ws.onopen = () => ws.send('subscribe');
+        ws.onmessage = (event) => {
+          const payload = JSON.parse(event.data);
+          logs.textContent += `[${payload.task_id}] ${payload.message}\n`;
+          logs.scrollTop = logs.scrollHeight;
+        };
+        ws.onclose = () => setTimeout(connectWS, 1000);
+      }
+
+      setInterval(refreshMeta, 2000);
+      connectWS();
+      refreshMeta();
+    </script>
+  </body>
+</html>
