@@ -1,0 +1,8 @@
+services:
+  local-agent-os:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 3000 --reload
