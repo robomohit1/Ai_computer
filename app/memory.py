@@ -8,8 +8,12 @@ from .models import MemoryItem
 
 
 class _FallbackCollection:
+    """Pure keyword-based fallback used only when ChromaDB is unavailable.
+    No rigged scores — plain TF-style word overlap only.
+    """
+
     def __init__(self):
-        self.docs = []
+        self.docs: list = []
 
     def count(self):
         return len(self.docs)
@@ -18,15 +22,13 @@ class _FallbackCollection:
         self.docs.extend(zip(ids, documents, metadatas))
 
     def query(self, query_texts, n_results):
-        q = query_texts[0].lower()
+        q_tokens = set(query_texts[0].lower().split())
         scored = []
         for _id, doc, meta in self.docs:
-            d = doc.lower()
-            score = 1 if any(t in d for t in q.split()) else 0
-            if "network" in q and "dns" in d:
-                score += 2
+            d_tokens = set(doc.lower().split())
+            score = len(q_tokens & d_tokens)  # simple token overlap — no hardcoded tricks
             scored.append((score, _id, doc, meta))
-        ranked = [x for x in sorted(scored, reverse=True)[:n_results]]
+        ranked = sorted(scored, reverse=True)[:n_results]
         return {
             "ids": [[r[1] for r in ranked]],
             "documents": [[r[2] for r in ranked]],
@@ -34,7 +36,7 @@ class _FallbackCollection:
         }
 
     def get(self, limit, offset):
-        chunk = self.docs[offset : offset + limit]
+        chunk = self.docs[offset: offset + limit]
         return {
             "ids": [c[0] for c in chunk],
             "documents": [c[1] for c in chunk],
@@ -56,17 +58,27 @@ class MemoryStore:
                 model_name="all-MiniLM-L6-v2", device="cpu", normalize_embeddings=True
             )
             self.collection = self.client.get_or_create_collection(
-                name="agent_memory", embedding_function=ef, metadata={"hnsw:space": "cosine"}
+                name="agent_memory",
+                embedding_function=ef,
+                metadata={"hnsw:space": "cosine"},
             )
             self._counter = self.collection.count()
         except Exception:
+            # ChromaDB or sentence-transformers not installed — fall back to keyword search
             self.collection = _FallbackCollection()
 
     def add(self, kind: str, content: str, metadata: Dict[str, Any] | None = None) -> int:
         self._counter += 1
         doc_id = str(self._counter)
-        meta = {"kind": kind, "created_at": datetime.now(timezone.utc).isoformat(), **(metadata or {})}
-        safe_meta = {k: str(v) if not isinstance(v, (str, int, float, bool)) else v for k, v in meta.items()}
+        meta = {
+            "kind": kind,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            **(metadata or {}),
+        }
+        safe_meta = {
+            k: str(v) if not isinstance(v, (str, int, float, bool)) else v
+            for k, v in meta.items()
+        }
         self.collection.add(documents=[content], metadatas=[safe_meta], ids=[doc_id])
         return self._counter
 
@@ -76,7 +88,10 @@ class MemoryStore:
     def search(self, prompt: str, limit: int = 5) -> List[MemoryItem]:
         if self.collection.count() == 0:
             return []
-        results = self.collection.query(query_texts=[prompt], n_results=min(limit, self.collection.count()))
+        results = self.collection.query(
+            query_texts=[prompt],
+            n_results=min(limit, self.collection.count()),
+        )
         items = []
         for i, doc in enumerate(results["documents"][0]):
             meta = results["metadatas"][0][i]
@@ -85,7 +100,9 @@ class MemoryStore:
                     id=int(results["ids"][0][i]),
                     kind=meta.get("kind", ""),
                     content=doc,
-                    metadata={k: v for k, v in meta.items() if k not in ("kind", "created_at")},
+                    metadata={
+                        k: v for k, v in meta.items() if k not in ("kind", "created_at")
+                    },
                     created_at=meta.get("created_at", ""),
                 )
             )
@@ -95,7 +112,10 @@ class MemoryStore:
         total = self.collection.count()
         if total == 0:
             return []
-        all_results = self.collection.get(limit=min(limit, total), offset=max(0, total - limit))
+        all_results = self.collection.get(
+            limit=min(limit, total),
+            offset=max(0, total - limit),
+        )
         items = []
         for i, doc in enumerate(all_results["documents"]):
             meta = all_results["metadatas"][i]
@@ -104,7 +124,9 @@ class MemoryStore:
                     id=int(all_results["ids"][i]),
                     kind=meta.get("kind", ""),
                     content=doc,
-                    metadata={k: v for k, v in meta.items() if k not in ("kind", "created_at")},
+                    metadata={
+                        k: v for k, v in meta.items() if k not in ("kind", "created_at")
+                    },
                     created_at=meta.get("created_at", ""),
                 )
             )
