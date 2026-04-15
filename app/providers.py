@@ -4,8 +4,11 @@ import base64
 import io
 import json
 import math
+import os
+import re
 from typing import Any, Dict, List, Optional
 
+import httpx
 from PIL import Image
 
 from .models import HierarchicalPlan
@@ -38,6 +41,18 @@ text_undo_edit, browser_open, browser_screenshot, browser_click, browser_click_c
 browser_scroll, browser_get_text, browser_accessibility_tree, browser_navigate_back, browser_close.
 Never output markdown. Never output prose outside JSON."""
 
+REFLECT_SYSTEM_PROMPT = """You are a reflection agent for an autonomous computer agent.
+Given a completed sub-task description, the actions that ran, their results, and a screenshot of the
+current screen, determine if the sub-task succeeded.
+Return ONLY valid JSON: {"success": bool, "reason": str, "retry_actions": []}
+If success is false, optionally populate retry_actions with corrective action objects.
+Never output markdown. Never output prose outside JSON."""
+
+EVALUATE_SYSTEM_PROMPT = """You are an evaluation agent for an autonomous computer agent.
+Given a goal, the action history, and the current screenshot, determine if the overall goal is complete.
+Return ONLY valid JSON: {"complete": bool, "reason": str}
+Never output markdown. Never output prose outside JSON."""
+
 
 def get_scale_factor(width: int, height: int) -> float:
     long_edge_scale = 1568 / max(width, height)
@@ -57,65 +72,120 @@ def _capture_screenshot_b64(width: int, height: int) -> str:
         return base64.b64encode(buf.getvalue()).decode("utf-8")
 
 
+def _extract_json(text: str) -> Any:
+    """Extract JSON from LLM response text, handling markdown code fences."""
+    text = text.strip()
+    # Strip markdown code fences if present
+    fence = re.match(r"^```(?:json)?\s*([\s\S]*?)```\s*$", text)
+    if fence:
+        text = fence.group(1).strip()
+    return json.loads(text)
+
+
 class PlannerProvider:
     def __init__(self, model: str = "gpt-4o"):
         self.model = model
+        self._anthropic_key: Optional[str] = os.environ.get("ANTHROPIC_API_KEY")
+        self._openai_key: Optional[str] = os.environ.get("OPENAI_API_KEY")
 
-    def _chat_anthropic(self, prompt: str, screenshot_b64: Optional[str] = None) -> Dict[str, Any]:
+    def _is_anthropic(self) -> bool:
+        return self.model.startswith("claude")
+
+    def _chat_anthropic(self, system: str, prompt: str, screenshot_b64: Optional[str] = None) -> str:
+        """Send a real request to Anthropic API and return the text content."""
+        if not self._anthropic_key:
+            raise RuntimeError("ANTHROPIC_API_KEY environment variable is not set")
         if screenshot_b64 is None:
             screenshot_b64 = _capture_screenshot_b64(1280, 800)
-        return {
+
+        content: List[Dict[str, Any]] = [
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": screenshot_b64,
+                },
+            },
+            {"type": "text", "text": prompt},
+        ]
+
+        payload = {
             "model": self.model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {"type": "base64", "media_type": "image/png", "data": screenshot_b64},
-                        },
-                        {"type": "text", "text": prompt},
-                    ],
-                }
-            ],
+            "max_tokens": 4096,
+            "system": system,
+            "messages": [{"role": "user", "content": content}],
         }
 
-    def _chat_openai(self, prompt: str, screenshot_b64: Optional[str] = None) -> Dict[str, Any]:
+        with httpx.Client(timeout=120) as client:
+            resp = client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": self._anthropic_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json=payload,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            # Anthropic returns content as a list of blocks
+            for block in data.get("content", []):
+                if block.get("type") == "text":
+                    return block["text"]
+            raise RuntimeError(f"No text content in Anthropic response: {data}")
+
+    def _chat_openai(self, system: str, prompt: str, screenshot_b64: Optional[str] = None) -> str:
+        """Send a real request to OpenAI API and return the text content."""
+        if not self._openai_key:
+            raise RuntimeError("OPENAI_API_KEY environment variable is not set")
         if screenshot_b64 is None:
             screenshot_b64 = _capture_screenshot_b64(1280, 800)
-        return {
+
+        messages = [
+            {"role": "system", "content": system},
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{screenshot_b64}"},
+                    },
+                    {"type": "text", "text": prompt},
+                ],
+            },
+        ]
+
+        payload = {
             "model": self.model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{screenshot_b64}"}},
-                        {"type": "text", "text": prompt},
-                    ],
-                }
-            ],
+            "max_tokens": 4096,
+            "messages": messages,
         }
+
+        with httpx.Client(timeout=120) as client:
+            resp = client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self._openai_key}",
+                    "content-type": "application/json",
+                },
+                json=payload,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data["choices"][0]["message"]["content"]
+
+    def _call_llm(self, system: str, prompt: str, screenshot_b64: Optional[str] = None) -> str:
+        """Route to the correct LLM provider based on model name."""
+        if self._is_anthropic():
+            return self._chat_anthropic(system, prompt, screenshot_b64)
+        return self._chat_openai(system, prompt, screenshot_b64)
 
     def plan_hierarchical(self, goal: str, latest_screenshot_b64: Optional[str] = None) -> HierarchicalPlan:
-        raw = {
-            "reasoning": f"Plan for {goal}",
-            "overall_complete": False,
-            "sub_tasks": [
-                {
-                    "id": "st-1",
-                    "description": goal,
-                    "actions": [
-                        {
-                            "id": "a-finish",
-                            "type": "finish",
-                            "args": {},
-                            "explanation": "Done",
-                            "requires_approval": False,
-                        }
-                    ],
-                }
-            ],
-        }
+        """Call the LLM to decompose the goal into a hierarchical plan."""
+        prompt = f"Goal: {goal}\n\nDecompose this goal into 2-8 sequential sub-tasks with concrete actions."
+        raw_text = self._call_llm(HIERARCHICAL_SYSTEM_PROMPT, prompt, latest_screenshot_b64)
+        raw = _extract_json(raw_text)
         return HierarchicalPlan.model_validate(raw)
 
     def reflect_on_subtask(
@@ -125,9 +195,25 @@ class PlannerProvider:
         results: List[str],
         post_screenshot_b64: Optional[str],
     ) -> Dict[str, Any]:
-        _ = description, actions, results, post_screenshot_b64
-        return {"success": True, "reason": "ok", "retry_actions": []}
+        """Call the LLM to reflect on whether a sub-task succeeded."""
+        prompt = (
+            f"Sub-task: {description}\n\n"
+            f"Actions taken:\n{json.dumps(actions, indent=2)}\n\n"
+            f"Results:\n{json.dumps(results, indent=2)}\n\n"
+            "Based on the screenshot and results, did this sub-task succeed?"
+        )
+        raw_text = self._call_llm(REFLECT_SYSTEM_PROMPT, prompt, post_screenshot_b64)
+        return _extract_json(raw_text)
 
     def evaluate(self, goal: str, history: List[str], latest_screenshot_b64: Optional[str] = None) -> Dict[str, Any]:
-        _ = goal, history, latest_screenshot_b64
-        return {"complete": any("finish" in h for h in history)}
+        """Call the LLM to evaluate whether the overall goal is complete."""
+        # Truncate history to last 20 entries to stay within context limits
+        recent = history[-20:] if len(history) > 20 else history
+        prompt = (
+            f"Goal: {goal}\n\n"
+            f"Recent action history (last {len(recent)} entries):\n"
+            + "\n".join(recent)
+            + "\n\nIs the overall goal now complete?"
+        )
+        raw_text = self._call_llm(EVALUATE_SYSTEM_PROMPT, prompt, latest_screenshot_b64)
+        return _extract_json(raw_text)
