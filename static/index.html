@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+  <body>
+    <h1>Agent Dashboard</h1>
+    <div id="approvals"></div>
+    <script>
+      const token = localStorage.getItem("agent_token") || "";
+      function dangerColor(d) { return d === "high" ? "red" : d === "medium" ? "orange" : "green"; }
+      async function poll() {
+        const res = await fetch('/api/approvals/pending', {headers: {Authorization: `Bearer ${token}`}});
+        if (!res.ok) return;
+        const items = await res.json();
+        const host = document.getElementById('approvals');
+        host.innerHTML = '';
+        items.forEach(item => {
+          const card = document.createElement('div');
+          card.style.border = '1px solid #ccc'; card.style.margin='10px'; card.style.padding='10px';
+          card.innerHTML = `<h3>${item.action_type}</h3>
+            <pre>${JSON.stringify(item.action_args, null, 2)}</pre>
+            <p style="color:${dangerColor(item.danger)}">Danger: ${item.danger}</p>
+            <p>${item.explanation}</p>
+            ${item.context_screenshot_b64 ? `<img style="max-width:400px" src="data:image/png;base64,${item.context_screenshot_b64}"/>` : ''}
+            <p data-created="${item.created_at}" data-timeout="${item.timeout_seconds}"></p>
+            <button onclick="approve('${item.action_id}', true)">Approve</button>
+            <button onclick="approve('${item.action_id}', false)">Deny</button>`;
+          host.appendChild(card);
+        });
+        document.querySelectorAll('p[data-created]').forEach(p => {
+          const left = Math.max(0, parseInt(p.dataset.timeout) - Math.floor((Date.now() - Date.parse(p.dataset.created))/1000));
+          p.textContent = `Timeout in ${left}s`;
+        });
+      }
+      async function approve(action_id, approve) {
+        await fetch('/api/approvals', {method:'POST', headers:{'Content-Type':'application/json', Authorization: `Bearer ${token}`}, body: JSON.stringify({action_id, approve})});
+      }
+      setInterval(poll, 2000); poll();
+    </script>
+  </body>
+</html>
