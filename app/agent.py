@@ -2,42 +2,99 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Optional
 
+from .log_emitter import LogEmitter
 from .memory import MemoryStore
-from .models import Action, ActionDecision, ActionType, AgentContext, ApprovalBundle, TaskRecord, ToolError
+from .models import (
+    Action, ActionDecision, ActionType, AgentContext,
+    ApprovalBundle, TaskRecord, ToolError,
+)
 from .providers import PlannerProvider, _capture_screenshot_b64
 from .safety import SafetyManager
 from .text_editor import TextEditorTool
 from .tools import ToolExecutor
 from .plugins import PluginRegistry
 
+_SCREENSHOT_ACTIONS = {
+    ActionType.mouse_click, ActionType.keyboard_type,
+    ActionType.scroll, ActionType.double_click,
+    ActionType.right_click, ActionType.middle_click,
+    ActionType.mouse_move, ActionType.left_click_drag,
+    ActionType.key_combo, ActionType.hold_key,
+}
+
+
+def _safe_screenshot(width: int, height: int) -> Optional[str]:
+    if sys.platform not in ("win32", "darwin") and not __import__("os").environ.get("DISPLAY"):
+        return None
+    try:
+        return _capture_screenshot_b64(width, height)
+    except Exception:
+        return None
+
 
 class AgentService:
-    def __init__(self, workspace: Path):
+    def __init__(self, workspace: Path, log_emitter: Optional[LogEmitter] = None):
         self.workspace = workspace
+        workspace.mkdir(parents=True, exist_ok=True)
         self.planner = PlannerProvider()
         self.safety = SafetyManager()
         self.text_editor = TextEditorTool(workspace)
         self.plugins = PluginRegistry()
         self.plugins.load_defaults()
-        self.tools = ToolExecutor(workspace, text_editor=self.text_editor, plugin_registry=self.plugins)
+        self.tools = ToolExecutor(
+            workspace, text_editor=self.text_editor, plugin_registry=self.plugins
+        )
         self.memory = MemoryStore(workspace / "memory")
         self.pending_approvals: Dict[str, bool] = {}
         self.pending_events: Dict[str, asyncio.Event] = {}
         self.pending_approval_bundles: Dict[str, ApprovalBundle] = {}
+        self._log = log_emitter
 
-    async def create_task(self, task_id: str, goal: str, screen_width: int = 1280, screen_height: int = 800) -> TaskRecord:
-        record = TaskRecord(id=task_id, status="running", context=AgentContext(goal=goal, screen_width=screen_width, screen_height=screen_height))
-        await self._run_task(record)
+    def _emit(self, task_id: str, event_type: str, **kwargs):
+        if self._log:
+            self._log.emit(task_id, event_type, kwargs)
+
+    def init_task(
+        self,
+        task_id: str,
+        goal: str,
+        screen_width: int = 1280,
+        screen_height: int = 800,
+    ) -> TaskRecord:
+        return TaskRecord(
+            id=task_id,
+            status="running",
+            context=AgentContext(
+                goal=goal,
+                screen_width=screen_width,
+                screen_height=screen_height,
+            ),
+        )
+
+    async def run_task(self, record: TaskRecord):
+        try:
+            await self._run_task(record)
+        except Exception as exc:
+            record.status = "failed"
+            record.error = str(exc)
+            self._emit(record.id, "error", message=str(exc))
+        finally:
+            self._emit(record.id, "done", status=record.status)
+
+    async def create_task(self, task_id: str, goal: str, **kwargs) -> TaskRecord:
+        record = self.init_task(task_id, goal)
+        await self.run_task(record)
         return record
 
     async def _wait_for_approval(
         self, action: Action, decision: ActionDecision, task_id: str, timeout_seconds: int = 60
     ) -> bool:
-        screenshot = _capture_screenshot_b64(1280, 800)
+        screenshot = _safe_screenshot(1280, 800)
         bundle = ApprovalBundle(
             action_id=action.id,
             action_type=action.type.value,
@@ -52,11 +109,23 @@ class AgentService:
         )
         self.pending_approval_bundles[action.id] = bundle
         self.pending_events[action.id] = asyncio.Event()
+        self._emit(
+            task_id, "approval_required",
+            action_id=action.id,
+            action_type=action.type.value,
+            danger=decision.danger.value,
+            explanation=action.explanation,
+            timeout_seconds=timeout_seconds,
+        )
         try:
-            await asyncio.wait_for(self.pending_events[action.id].wait(), timeout=timeout_seconds)
+            await asyncio.wait_for(
+                self.pending_events[action.id].wait(), timeout=timeout_seconds
+            )
         except asyncio.TimeoutError as exc:
             self.pending_approvals[action.id] = False
+            self.pending_approval_bundles.pop(action.id, None)
             raise ToolError("Approval timed out") from exc
+        self.pending_approval_bundles.pop(action.id, None)
         return self.pending_approvals.get(action.id, False)
 
     def submit_approval(self, action_id: str, approve: bool):
@@ -65,63 +134,125 @@ class AgentService:
             self.pending_events[action_id].set()
 
     async def _run_task(self, record: TaskRecord):
-        latest = None
-        plan = self.planner.plan_hierarchical(record.context.goal, latest)
+        task_id = record.id
+        sw = getattr(record.context, "screen_width", 1280)
+        sh = getattr(record.context, "screen_height", 800)
+        latest: Optional[str] = None
+
+        self._emit(task_id, "planning", goal=record.context.goal)
+
+        plan = await asyncio.get_event_loop().run_in_executor(
+            None, self.planner.plan_hierarchical, record.context.goal, latest
+        )
+
         if plan.overall_complete:
             record.status = "completed"
             return
+
+        self._emit(task_id, "plan_ready", subtask_count=len(plan.sub_tasks),
+                   reasoning=plan.reasoning)
+
         for sub_task in plan.sub_tasks:
             sub_task.status = "running"
+            self._emit(task_id, "subtask_start",
+                       subtask_id=sub_task.id, description=sub_task.description)
             retries = 0
+
             while retries <= 2:
                 action_results = []
+
                 for action in sub_task.actions:
                     decision = self.safety.evaluate(action)
+
                     if decision.requires_approval:
-                        approved = await self._wait_for_approval(action, decision, record.id)
+                        approved = await self._wait_for_approval(action, decision, task_id)
                         if not approved:
-                            raise ToolError("Action denied")
-                    result = self.tools.run_action(action, record.context.screen_width, record.context.screen_height)
-                    action_results.append(result.output)
-                    record.context.history.append(json.dumps({"type": "action", "action": action.model_dump(), "result": result.output}))
-                    if action.type in {
-                        ActionType.mouse_click,
-                        ActionType.keyboard_type,
-                        ActionType.scroll,
-                        ActionType.double_click,
-                        ActionType.right_click,
-                        ActionType.key_combo,
-                        ActionType.browser_open,
-                        ActionType.browser_click,
-                        ActionType.browser_click_coords,
-                        ActionType.browser_type,
-                        ActionType.browser_scroll,
-                    }:
-                        latest = _capture_screenshot_b64(record.context.screen_width, record.context.screen_height)
-                        record.context.history.append(
-                            json.dumps(
-                                {
-                                    "type": "post_action_screenshot",
-                                    "action_id": action.id,
-                                    "action_type": action.type.value,
-                                    "screenshot_b64": latest,
-                                }
-                            )
+                            raise ToolError(f"Action {action.id} denied by user")
+
+                    self._emit(task_id, "action_start",
+                               action_id=action.id, action_type=action.type.value,
+                               args=action.args, explanation=action.explanation)
+
+                    try:
+                        result = await asyncio.get_event_loop().run_in_executor(
+                            None, self.tools.run_action, action, sw, sh
                         )
-                reflection = self.planner.reflect_on_subtask(
+                    except ToolError as te:
+                        result_output = f"ERROR: {te}"
+                        self._emit(task_id, "action_error",
+                                   action_id=action.id, error=result_output)
+                        action_results.append(result_output)
+                        record.context.history.append(
+                            json.dumps({"type": "action_error",
+                                        "action": action.model_dump(),
+                                        "error": result_output})
+                        )
+                        continue
+
+                    action_results.append(result.output)
+                    record.context.history.append(
+                        json.dumps({"type": "action",
+                                    "action": action.model_dump(),
+                                    "result": result.output})
+                    )
+                    self._emit(task_id, "action_done",
+                               action_id=action.id, ok=result.ok, output=result.output)
+
+                    if action.type in _SCREENSHOT_ACTIONS:
+                        latest = _safe_screenshot(sw, sh)
+                        if latest:
+                            self._emit(task_id, "screenshot",
+                                       action_id=action.id, screenshot_b64=latest)
+
+                    if action.type == ActionType.finish:
+                        record.status = "completed"
+                        return
+
+                reflection = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    self.planner.reflect_on_subtask,
                     sub_task.description,
                     [a.model_dump() for a in sub_task.actions],
                     action_results,
                     latest,
                 )
+
+                self._emit(task_id, "subtask_reflect",
+                           subtask_id=sub_task.id,
+                           success=reflection.get("success"),
+                           reason=reflection.get("reason", ""))
+
                 if reflection.get("success", False):
                     sub_task.status = "completed"
                     sub_task.post_screenshot_b64 = latest
+                    self._emit(task_id, "subtask_done", subtask_id=sub_task.id)
                     break
+
                 retries += 1
                 if retries > 2:
                     sub_task.status = "failed"
-                    sub_task.error = reflection.get("reason", "failed")
+                    sub_task.error = reflection.get("reason", "failed after retries")
+                    self._emit(task_id, "subtask_failed",
+                               subtask_id=sub_task.id, error=sub_task.error)
                     break
-                sub_task.actions = [Action.model_validate(a) for a in reflection.get("retry_actions", [])]
-        record.status = "completed" if all(s.status == "completed" for s in plan.sub_tasks) else "failed"
+
+                retry_actions = reflection.get("retry_actions", [])
+                if retry_actions:
+                    sub_task.actions = [Action.model_validate(a) for a in retry_actions]
+                else:
+                    sub_task.status = "failed"
+                    sub_task.error = reflection.get("reason", "no retry actions")
+                    break
+
+        record.status = (
+            "completed"
+            if all(s.status == "completed" for s in plan.sub_tasks)
+            else "partial" if any(s.status == "completed" for s in plan.sub_tasks)
+            else "failed"
+        )
+
+        self.memory.add(
+            "task_result",
+            f"Goal: {record.context.goal}\nStatus: {record.status}",
+            {"task_id": task_id},
+        )
