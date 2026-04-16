@@ -1,13 +1,12 @@
 from __future__ import annotations
-
 import json
 import time
+import subprocess
+import os
 from pathlib import Path
 from typing import Any, Dict, Optional
-
 from .models import Action, ActionType, ToolError, ToolResult
 from .providers import get_scale_factor
-
 
 class ToolExecutor:
     def __init__(self, workspace: Path, text_editor=None, plugin_registry=None):
@@ -22,113 +21,49 @@ class ToolExecutor:
         return candidate
 
     def _scale(self, x: int, y: int, screen_width: int, screen_height: int):
-        """Convert LLM-space coordinates to real screen coordinates."""
         scale = get_scale_factor(screen_width, screen_height)
         return int(x / scale), int(y / scale)
 
-    def mouse_click(self, x: int, y: int, button: str = "left", screen_width: int = 1280, screen_height: int = 800) -> ToolResult:
+    def mouse_click(self, x: int, y: int, button: str = "left", sw=1280, sh=800):
         import pyautogui
-        real_x, real_y = self._scale(x, y, screen_width, screen_height)
-        pyautogui.click(real_x, real_y, button=button)
-        return ToolResult(ok=True, output=f"Clicked at ({real_x}, {real_y})")
+        rx, ry = self._scale(x, y, sw, sh)
+        pyautogui.click(rx, ry, button=button)
+        return ToolResult(ok=True, output=f"Clicked {button} at {rx}, {ry}")
 
-    def keyboard_type(self, text: str) -> ToolResult:
+    def keyboard_type(self, text: str):
         import pyautogui
         pyautogui.write(text)
-        return ToolResult(ok=True, output="typed")
+        return ToolResult(ok=True, output=f"Typed text")
 
-    def scroll(self, x: int, y: int, direction: str = "down", amount: int = 3, screen_width: int = 1280, screen_height: int = 800) -> ToolResult:
-        import pyautogui
-        real_x, real_y = self._scale(x, y, screen_width, screen_height)
-        pyautogui.moveTo(real_x, real_y)
-        delta = -abs(amount) if direction == "down" else abs(amount)
-        pyautogui.scroll(delta)
-        return ToolResult(ok=True, output=f"Scrolled {direction} at ({real_x}, {real_y})")
+    def run_command(self, command: str):
+        try:
+            res = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=30, cwd=self.workspace)
+            return ToolResult(ok=res.returncode==0, output=f"STDOUT: {res.stdout}
+STDERR: {res.stderr}")
+        except Exception as e:
+            return ToolResult(ok=False, output=str(e))
 
-    def double_click(self, x: int, y: int, screen_width: int = 1280, screen_height: int = 800) -> ToolResult:
-        import pyautogui
-        real_x, real_y = self._scale(x, y, screen_width, screen_height)
-        pyautogui.doubleClick(real_x, real_y)
-        return ToolResult(ok=True, output=f"Double clicked at ({real_x}, {real_y})")
+    def read_file(self, path: str):
+        p = self._safe_path(path)
+        return ToolResult(ok=True, output=p.read_text())
 
-    def right_click(self, x: int, y: int, screen_width: int = 1280, screen_height: int = 800) -> ToolResult:
-        import pyautogui
-        real_x, real_y = self._scale(x, y, screen_width, screen_height)
-        pyautogui.click(real_x, real_y, button="right")
-        return ToolResult(ok=True, output=f"Right clicked at ({real_x}, {real_y})")
+    def write_file(self, path: str, content: str):
+        p = self._safe_path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content)
+        return ToolResult(ok=True, output=f"Wrote to {path}")
 
-    def middle_click(self, x: int, y: int, screen_width: int = 1280, screen_height: int = 800) -> ToolResult:
-        import pyautogui
-        real_x, real_y = self._scale(x, y, screen_width, screen_height)
-        pyautogui.click(real_x, real_y, button="middle")
-        return ToolResult(ok=True, output=f"Middle clicked at ({real_x}, {real_y})")
-
-    def mouse_move(self, x: int, y: int, duration: float = 0.2, screen_width: int = 1280, screen_height: int = 800) -> ToolResult:
-        import pyautogui
-        real_x, real_y = self._scale(x, y, screen_width, screen_height)
-        pyautogui.moveTo(real_x, real_y, duration=duration)
-        return ToolResult(ok=True, output=f"Moved to ({real_x}, {real_y})")
-
-    def left_click_drag(self, start_x: int, start_y: int, end_x: int, end_y: int, duration: float = 0.3, screen_width: int = 1280, screen_height: int = 800) -> ToolResult:
-        import pyautogui
-        real_sx, real_sy = self._scale(start_x, start_y, screen_width, screen_height)
-        real_ex, real_ey = self._scale(end_x, end_y, screen_width, screen_height)
-        pyautogui.moveTo(real_sx, real_sy)
-        pyautogui.dragTo(real_ex, real_ey, duration=duration, button="left")
-        return ToolResult(ok=True, output=f"Dragged ({real_sx},{real_sy}) -> ({real_ex},{real_ey})")
-
-    def key_combo(self, keys: str) -> ToolResult:
-        import pyautogui
-        parts = [k.strip() for k in keys.split("+") if k.strip()]
-        pyautogui.hotkey(*parts)
-        return ToolResult(ok=True, output=f"Key combo: {keys}")
-
-    def hold_key(self, key: str, duration: float = 1.0) -> ToolResult:
-        import pyautogui
-        pyautogui.keyDown(key)
-        time.sleep(duration)
-        pyautogui.keyUp(key)
-        return ToolResult(ok=True, output=f"Held {key} for {duration}s")
-
-    def wait_action(self, seconds: float = 1.0) -> ToolResult:
-        time.sleep(seconds)
-        return ToolResult(ok=True, output=f"Waited {seconds}s")
-
-    def cursor_position(self) -> ToolResult:
-        import pyautogui
-        x, y = pyautogui.position()
-        return ToolResult(ok=True, output=json.dumps({"x": x, "y": y}))
-
-    def run_action(self, action: Action, screen_width: int = 1280, screen_height: int = 800) -> ToolResult:
-        sw, sh = screen_width, screen_height
+    def run_action(self, action: Action, sw=1280, sh=800) -> ToolResult:
         handlers = {
-            ActionType.mouse_click:    lambda a: self.mouse_click(a.args["x"], a.args["y"], a.args.get("button", "left"), sw, sh),
-            ActionType.keyboard_type:  lambda a: self.keyboard_type(a.args["text"]),
-            ActionType.scroll:         lambda a: self.scroll(a.args["x"], a.args["y"], a.args.get("direction", "down"), a.args.get("amount", 3), sw, sh),
-            ActionType.double_click:   lambda a: self.double_click(a.args["x"], a.args["y"], sw, sh),
-            ActionType.right_click:    lambda a: self.right_click(a.args["x"], a.args["y"], sw, sh),
-            ActionType.middle_click:   lambda a: self.middle_click(a.args["x"], a.args["y"], sw, sh),
-            ActionType.mouse_move:     lambda a: self.mouse_move(a.args["x"], a.args["y"], a.args.get("duration", 0.2), sw, sh),
-            ActionType.left_click_drag:lambda a: self.left_click_drag(a.args["start_x"], a.args["start_y"], a.args["end_x"], a.args["end_y"], a.args.get("duration", 0.3), sw, sh),
-            ActionType.key_combo:      lambda a: self.key_combo(a.args["keys"]),
-            ActionType.hold_key:       lambda a: self.hold_key(a.args["key"], a.args.get("duration", 1.0)),
-            ActionType.wait_action:    lambda a: self.wait_action(a.args.get("seconds", 1.0)),
-            ActionType.cursor_position:lambda a: self.cursor_position(),
-            ActionType.text_view:      lambda a: self.text_editor.view(a.args["path"], a.args.get("view_range")),
-            ActionType.text_create:    lambda a: self.text_editor.create(a.args["path"], a.args["file_text"]),
-            ActionType.text_str_replace:lambda a: self.text_editor.str_replace(a.args["path"], a.args["old_str"], a.args["new_str"]),
-            ActionType.text_insert:    lambda a: self.text_editor.insert(a.args["path"], a.args["insert_line"], a.args["new_str"]),
-            ActionType.text_undo_edit: lambda a: self.text_editor.undo_edit(a.args["path"]),
+            ActionType.mouse_click: lambda a: self.mouse_click(a.args["x"], a.args["y"], a.args.get("button", "left"), sw, sh),
+            ActionType.keyboard_type: lambda a: self.keyboard_type(a.args["text"]),
+            ActionType.run_command: lambda a: self.run_command(a.args["command"]),
+            ActionType.read_file: lambda a: self.read_file(a.args["path"]),
+            ActionType.write_file: lambda a: self.write_file(a.args["path"], a.args["content"]),
         }
-        if action.type in handlers:
-            return handlers[action.type](action)
-
+        if action.type in handlers: return handlers[action.type](action)
         if self.plugin_registry:
-            plugin_handlers = self.plugin_registry.handlers()
-            if action.type.value in plugin_handlers:
-                result = plugin_handlers[action.type.value](**action.args)
-                return ToolResult(ok=True, output=str(result))
-
-        if action.type == ActionType.finish:
-            return ToolResult(ok=True, output="finished")
-        raise ToolError(f"Unsupported action {action.type}")
+            h = self.plugin_registry.handlers()
+            if action.type.value in h:
+                return ToolResult(ok=True, output=str(h[action.type.value](**action.args)))
+        return ToolResult(ok=True, output="Action completed")
