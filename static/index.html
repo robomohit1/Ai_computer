@@ -1,39 +1,110 @@
-<!doctype html>
-<html>
-  <body>
-    <h1>Agent Dashboard</h1>
-    <div id="approvals"></div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Computer - Claude Cowork</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+        body { font-family: 'Inter', sans-serif; background: #f9f9f9; }
+        .sidebar { width: 260px; background: #202123; color: white; }
+        .chat-bubble { max-width: 80%; padding: 12px 16px; border-radius: 12px; margin-bottom: 12px; position: relative; }
+        .user-bubble { background: #fff; border: 1px solid #e5e5e5; align-self: flex-end; }
+        .ai-bubble { background: #f0f0f0; align-self: flex-start; }
+        .live-screen { background: #000; border-radius: 8px; overflow: hidden; position: relative; border: 4px solid #333; }
+        .dot { height: 10px; width: 10px; background-color: #ef4444; border-radius: 50%; display: inline-block; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { transform: scale(0.9); opacity: 0.7; } 70% { transform: scale(1.1); opacity: 1; } 100% { transform: scale(0.9); opacity: 0.7; } }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden">
+    <div class="sidebar flex flex-col h-full shadow-xl">
+        <div class="p-6 border-b border-gray-700 font-bold text-xl tracking-tight">AI Computer</div>
+        <div class="flex-1 overflow-y-auto p-4 space-y-2" id="task-history"></div>
+        <div class="p-4 border-t border-gray-700"><button onclick="location.reload()" class="w-full bg-gray-700 hover:bg-gray-600 py-2 rounded text-sm transition">New Session</button></div>
+    </div>
+    <div class="flex-1 flex flex-col h-full relative">
+        <header class="h-16 border-b bg-white flex items-center px-8 justify-between shadow-sm">
+            <div class="flex items-center space-x-3">
+                <span class="font-semibold text-gray-800" id="task-title">Idle</span>
+                <span id="status-pill" class="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-gray-100 text-gray-400">Ready</span>
+            </div>
+            <select id="model-id" class="text-sm bg-gray-50 border rounded-md px-3 py-1.5 outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+                <option value="gpt-4o">GPT-4o</option>
+                <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+            </select>
+        </header>
+        <div class="flex-1 flex overflow-hidden">
+            <div class="w-1/2 flex flex-col h-full bg-white border-r">
+                <div id="messages" class="flex-1 overflow-y-auto p-8 flex flex-col space-y-4"></div>
+                <div class="p-6 border-t bg-gray-50">
+                    <div class="relative flex items-center bg-white border rounded-xl shadow-sm focus-within:ring-2 focus-within:ring-blue-500 transition-all">
+                        <textarea id="input" rows="1" class="w-full p-4 pr-12 rounded-xl outline-none resize-none text-sm" placeholder="Give a goal..."></textarea>
+                        <button id="send" class="absolute right-3 p-2 text-blue-600 hover:text-blue-800 transition"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"/></svg></button>
+                    </div>
+                </div>
+            </div>
+            <div class="w-1/2 flex flex-col p-8 bg-gray-100 h-full">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest">Visual Feedback</h3>
+                    <div class="flex items-center space-x-2 text-[10px] font-medium text-gray-400 bg-white px-2 py-1 rounded border shadow-sm"><span class="dot"></span><span>LIVE STREAM</span></div>
+                </div>
+                <div class="flex-1 live-screen shadow-2xl bg-black flex items-center justify-center">
+                    <img id="screen" class="max-w-full max-h-full object-contain" src="about:blank" />
+                </div>
+                <div class="mt-6 p-5 bg-white rounded-xl border shadow-sm">
+                    <div class="text-[10px] font-bold text-gray-400 uppercase mb-2">Activity Log</div>
+                    <div id="log" class="text-xs font-mono text-gray-600 line-clamp-2">Waiting for task...</div>
+                </div>
+            </div>
+        </div>
+        <div id="approval" class="absolute inset-0 bg-gray-900/60 backdrop-blur-md z-50 flex items-center justify-center hidden">
+            <div class="bg-white rounded-2xl shadow-2xl w-[550px] p-8">
+                <h2 class="text-2xl font-bold text-gray-900 mb-2">Action Approval</h2>
+                <p id="app-reason" class="text-gray-500 text-sm mb-6">Confirm if the agent should proceed.</p>
+                <div class="bg-gray-50 rounded-lg p-4 font-mono text-xs mb-6 border border-gray-200 overflow-x-auto" id="app-code"></div>
+                <div class="flex space-x-4">
+                    <button onclick="sendApp(false)" class="flex-1 py-3 px-6 rounded-xl border-2 font-semibold hover:bg-gray-50 transition">Deny</button>
+                    <button onclick="sendApp(true)" class="flex-1 py-3 px-6 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition">Approve</button>
+                </div>
+            </div>
+        </div>
+    </div>
     <script>
-      const token = localStorage.getItem("agent_token") || "";
-      function dangerColor(d) { return d === "high" ? "red" : d === "medium" ? "orange" : "green"; }
-      async function poll() {
-        const res = await fetch('/api/approvals/pending', {headers: {Authorization: `Bearer ${token}`}});
-        if (!res.ok) return;
-        const items = await res.json();
-        const host = document.getElementById('approvals');
-        host.innerHTML = '';
-        items.forEach(item => {
-          const card = document.createElement('div');
-          card.style.border = '1px solid #ccc'; card.style.margin='10px'; card.style.padding='10px';
-          card.innerHTML = `<h3>${item.action_type}</h3>
-            <pre>${JSON.stringify(item.action_args, null, 2)}</pre>
-            <p style="color:${dangerColor(item.danger)}">Danger: ${item.danger}</p>
-            <p>${item.explanation}</p>
-            ${item.context_screenshot_b64 ? `<img style="max-width:400px" src="data:image/png;base64,${item.context_screenshot_b64}"/>` : ''}
-            <p data-created="${item.created_at}" data-timeout="${item.timeout_seconds}"></p>
-            <button onclick="approve('${item.action_id}', true)">Approve</button>
-            <button onclick="approve('${item.action_id}', false)">Deny</button>`;
-          host.appendChild(card);
-        });
-        document.querySelectorAll('p[data-created]').forEach(p => {
-          const left = Math.max(0, parseInt(p.dataset.timeout) - Math.floor((Date.now() - Date.parse(p.dataset.created))/1000));
-          p.textContent = `Timeout in ${left}s`;
-        });
-      }
-      async function approve(action_id, approve) {
-        await fetch('/api/approvals', {method:'POST', headers:{'Content-Type':'application/json', Authorization: `Bearer ${token}`}, body: JSON.stringify({action_id, approve})});
-      }
-      setInterval(poll, 2000); poll();
+        const KEY = localStorage.getItem("key") || prompt("API Key:");
+        localStorage.setItem("key", KEY);
+        const $ = id => document.getElementById(id);
+        let task = null;
+
+        const api = (p, m='GET', b=null) => fetch(p, {method:m, headers:{'Authorization':`Bearer ${KEY}`, 'Content-Type':'application/json'}, body:b?JSON.stringify(b):null}).then(r=>r.json());
+
+        const start = async () => {
+            const goal = $('input').value; if(!goal) return;
+            task = Math.random().toString(36).slice(2);
+            msg(goal, 'user'); $('input').value = '';
+            $('task-title').innerText = goal.slice(0,30)+'...';
+            $('status-pill').innerText = 'Running'; $('status-pill').className = 'text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-blue-100 text-blue-600';
+            await api('/api/tasks', 'POST', {task_id:task, goal, model:$('model-id').value});
+            listen();
+        };
+
+        const msg = (t, r) => { const d = document.createElement('div'); d.className = `${r}-bubble chat-bubble`; d.innerText = t; $('messages').appendChild(d); d.scrollIntoView({behavior:'smooth'}); };
+
+        const listen = () => {
+            const s = new EventSource(`/api/tasks/${task}/stream?token=${KEY}`);
+            s.onmessage = e => {
+                const d = JSON.parse(e.data);
+                if(d.type==='action_start') $('log').innerText = `EXECUTING: ${d.action_type}`;
+                if(d.type==='screenshot') $('screen').src = `data:image/png;base64,${d.screenshot_b64}`;
+                if(d.type==='approval_required') { $('app-code').innerText = `${d.action_type}: ${JSON.stringify(d.args)}`; $('approval').classList.remove('hidden'); window.aid = d.action_id; }
+                if(d.type==='done') { $('status-pill').innerText = 'Complete'; $('status-pill').className = 'text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-green-100 text-green-600'; s.close(); }
+            };
+        };
+
+        const sendApp = a => { api('/api/approvals', 'POST', {action_id:window.aid, approve:a}); $('approval').classList.add('hidden'); };
+        $('send').onclick = start;
+        $('input').onkeydown = e => { if(e.key==='Enter' && !e.shiftKey) { e.preventDefault(); start(); } };
     </script>
-  </body>
+</body>
 </html>
