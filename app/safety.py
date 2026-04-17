@@ -8,6 +8,16 @@ class SafetyManager:
         t = action.type.value
 
         high_risk = {"run_command", "write_file", "move_file", "text_create", "text_str_replace", "text_insert"}
+        if t == "run_command":
+            cmd = action.args.get("command", "").lower()
+            dangerous_patterns = ["rm -rf /", "format ", "del /f /s", ":(){ :|:& };:"]
+            if any(p in cmd for p in dangerous_patterns):
+                return ActionDecision(
+                    danger=DangerLevel.high,
+                    reason=f"Hard-blocked dangerous shell command: {cmd}",
+                    requires_approval=True
+                )
+            
         if t in high_risk:
             return ActionDecision(
                 danger=DangerLevel.high,

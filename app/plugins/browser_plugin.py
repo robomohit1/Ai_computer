@@ -94,3 +94,11 @@ def handlers():
         "browser_navigate_back": browser_navigate_back,
         "browser_close": browser_close,
     }
+
+def register():
+    from ..models import PluginAction
+    return PluginAction(
+        name="browser",
+        description="Browser control tools via Playwright",
+        handlers=handlers()
+    )

@@ -3,89 +3,185 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Computer - Claude Cowork</title>
+    <title>AI Computer</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
-        body { font-family: 'Inter', sans-serif; background: #f9f9f9; }
-        .sidebar { width: 260px; background: #202123; color: white; }
-        .chat-bubble { max-width: 80%; padding: 12px 16px; border-radius: 12px; margin-bottom: 12px; position: relative; }
-        .user-bubble { background: #fff; border: 1px solid #e5e5e5; align-self: flex-end; }
-        .ai-bubble { background: #f0f0f0; align-self: flex-start; }
-        .warn-bubble { background: #fef3c7; border: 1px solid #f59e0b; align-self: flex-start; }
-        .error-bubble { background: #fee2e2; border: 1px solid #ef4444; align-self: flex-start; }
-        .live-screen { background: #000; border-radius: 8px; overflow: hidden; position: relative; border: 4px solid #333; }
-        .dot { height: 10px; width: 10px; background-color: #ef4444; border-radius: 50%; display: inline-block; animation: pulse 2s infinite; }
-        @keyframes pulse { 0% { transform: scale(0.9); opacity: 0.7; } 70% { transform: scale(1.1); opacity: 1; } 100% { transform: scale(0.9); opacity: 0.7; } }
-        .subtask-item { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; font-size: 0.8rem; }
-        .subtask-icon { flex-shrink: 0; width: 18px; height: 18px; margin-top: 1px; }
-        .subtask-pending { color: #9ca3af; }
-        .subtask-running { color: #3b82f6; animation: pulse 1.5s infinite; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background: #0f0f0f; 
+            color: #ffffff;
+            margin: 0;
+        }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+
+        /* Left Sidebar */
+        .sidebar { background: #111111; border-right: 1px solid #2a2a2a; }
+        
+        /* Center Panel */
+        .center-panel { background: #0f0f0f; }
+        .header { background: #0f0f0f; border-bottom: 1px solid #2a2a2a; }
+        .input-area { background: #0f0f0f; border-top: 1px solid #2a2a2a; }
+        .input-box { background: #1a1a1a; border: 1px solid #2a2a2a; }
+        .input-box:focus-within { border-color: #6366f1; }
+        
+        /* Right Panel */
+        .right-panel { background: #111111; border-left: 1px solid #2a2a2a; }
+        .live-screen { background: #000; border: 1px solid #2a2a2a; position: relative; }
+        .activity-log { background: #1a1a1a; border: 1px solid #2a2a2a; font-family: monospace; }
+        .stats-bar { background: #1a1a1a; border: 1px solid #2a2a2a; }
+
+        /* Chat Bubbles */
+        .chat-bubble { max-width: 85%; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 0.9rem; line-height: 1.5; }
+        .user-bubble { background: #1a1a1a; border: 1px solid #2a2a2a; align-self: flex-end; }
+        .ai-bubble { background: #1a1a1a; border: 1px solid #2a2a2a; align-self: flex-start; }
+        .warn-bubble { background: rgba(245, 158, 11, 0.1); border: 1px solid #f59e0b; align-self: flex-start; color: #fcd34d; }
+        .error-bubble { background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; align-self: flex-start; color: #fca5a5; }
+        .success-bubble { background: rgba(34, 197, 94, 0.1); border: 1px solid #22c55e; align-self: flex-start; color: #86efac; }
+        .cancel-bubble { background: rgba(156, 163, 175, 0.1); border: 1px solid #6b7280; align-self: flex-start; color: #d1d5db; }
+
+        /* Task History */
+        .task-history-item { 
+            padding: 10px 12px; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            font-size: 0.85rem; 
+            color: #a1a1aa; 
+            transition: all 180ms ease; 
+        }
+        .task-history-item:hover { background: #1a1a1a; color: #e4e4e7; }
+        .task-history-item.active { background: #1a1a1a; color: #ffffff; border-left: 2px solid #6366f1; border-radius: 0 6px 6px 0; }
+
+        /* Status & Animation */
+        .dot { height: 8px; width: 8px; border-radius: 50%; display: inline-block; }
+        .dot-pulse { animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+
+        /* Subtasks */
+        .subtask-item { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; font-size: 0.85rem; }
+        .subtask-pending { color: #71717a; }
+        .subtask-running { color: #6366f1; animation: pulse 1.5s infinite; }
         .subtask-done { color: #22c55e; }
-        .task-history-item { padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; color: #d1d5db; transition: background 0.15s; }
-        .task-history-item:hover { background: #2d2f31; }
-        .task-history-item.active { background: #3d3f41; }
+        .subtask-failed { color: #ef4444; }
+
+        /* Modal */
+        .modal-overlay { background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(4px); }
+        .modal-card { background: #1a1a1a; border: 1px solid #2a2a2a; }
+
+        /* Inputs & Buttons */
+        .btn-indigo { background: #6366f1; color: white; transition: background 180ms ease; }
+        .btn-indigo:hover { background: #4f46e5; }
+        .btn-outline { background: transparent; border: 1px solid #2a2a2a; color: #e4e4e7; transition: all 180ms ease; }
+        .btn-outline:hover { background: #2a2a2a; color: white; }
+        select { background: #1a1a1a; border: 1px solid #2a2a2a; color: #e4e4e7; }
+        select:focus { border-color: #6366f1; outline: none; }
+        
+        .placeholder-anim {
+            background: linear-gradient(90deg, #111 25%, #1a1a1a 50%, #111 75%);
+            background-size: 200% 100%;
+            animation: loading 2s infinite linear;
+        }
+        @keyframes loading { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
     </style>
 </head>
 <body class="flex h-screen overflow-hidden">
-    <div class="sidebar flex flex-col h-full shadow-xl">
-        <div class="p-6 border-b border-gray-700 font-bold text-xl tracking-tight">AI Computer</div>
-        <div class="flex-1 overflow-y-auto p-4 space-y-1" id="task-history"></div>
-        <div class="p-4 border-t border-gray-700"><button onclick="location.reload()" class="w-full bg-gray-700 hover:bg-gray-600 py-2 rounded text-sm transition">New Session</button></div>
-    </div>
-    <div class="flex-1 flex flex-col h-full relative">
-        <header class="h-16 border-b bg-white flex items-center px-8 justify-between shadow-sm">
-            <div class="flex items-center space-x-3">
-                <span class="font-semibold text-gray-800" id="task-title">Idle</span>
-                <span id="status-pill" class="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-gray-100 text-gray-400">Ready</span>
+    <!-- LEFT SIDEBAR -->
+    <div class="sidebar w-[240px] flex flex-col flex-shrink-0 h-full">
+        <div class="p-6 flex items-center gap-3">
+            <svg class="w-6 h-6 text-indigo-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"/></svg>
+            <span class="font-bold text-lg tracking-tight">AI Computer</span>
+        </div>
+        <div class="px-4 pb-4">
+            <button onclick="location.reload()" class="w-full btn-indigo py-2 rounded-md text-sm font-medium">New Task</button>
+        </div>
+        <div class="px-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">History</div>
+        <div class="flex-1 overflow-y-auto px-2 space-y-1" id="task-history"></div>
+        
+        <div class="p-4 border-t border-zinc-800 space-y-3">
+            <div>
+                <label class="text-[10px] text-zinc-500 uppercase tracking-wider block mb-1">Model</label>
+                <select id="model-id" class="w-full text-xs rounded-md px-2 py-1.5 cursor-pointer"></select>
             </div>
-            <select id="model-id" class="text-sm bg-gray-50 border rounded-md px-3 py-1.5 outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
-                <option value="claude-3-opus-20240229">Claude 3 Opus</option>
-                <option value="gpt-4o">GPT-4o</option>
-                <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-            </select>
+            <div class="text-[10px] text-zinc-500" id="version-tag">v1.0.0</div>
+        </div>
+    </div>
+
+    <!-- CENTER PANEL -->
+    <div class="center-panel flex-1 flex flex-col h-full relative min-w-0">
+        <header class="header h-[60px] flex items-center px-6 justify-between flex-shrink-0">
+            <div class="flex items-center space-x-4 min-w-0">
+                <h1 class="font-semibold text-zinc-100 truncate text-sm" id="task-title">Idle</h1>
+                <div class="flex items-center gap-2 px-2.5 py-1 rounded-full bg-zinc-800 border border-zinc-700" id="status-container">
+                    <span class="dot bg-zinc-500" id="status-dot"></span>
+                    <span id="status-pill" class="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Ready</span>
+                </div>
+            </div>
+            <div class="flex items-center space-x-2" id="controls" style="display: none;">
+                <button id="btn-pause" onclick="togglePause()" class="btn-outline px-3 py-1.5 rounded text-xs font-medium">Pause</button>
+                <button id="btn-cancel" onclick="cancelTask()" class="bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 px-3 py-1.5 rounded text-xs font-medium transition">Cancel</button>
+            </div>
         </header>
-        <div class="flex-1 flex overflow-hidden">
-            <div class="w-1/2 flex flex-col h-full bg-white border-r">
-                <div id="messages" class="flex-1 overflow-y-auto p-8 flex flex-col space-y-4"></div>
-                <div class="p-6 border-t bg-gray-50">
-                    <div class="relative flex items-center bg-white border rounded-xl shadow-sm focus-within:ring-2 focus-within:ring-blue-500 transition-all">
-                        <textarea id="input" rows="1" class="w-full p-4 pr-12 rounded-xl outline-none resize-none text-sm" placeholder="Give a goal..."></textarea>
-                        <button id="send" class="absolute right-3 p-2 text-blue-600 hover:text-blue-800 transition"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"/></svg></button>
-                    </div>
-                </div>
-            </div>
-            <div class="w-1/2 flex flex-col p-8 bg-gray-100 h-full overflow-hidden">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest">Visual Feedback</h3>
-                    <div class="flex items-center space-x-2 text-[10px] font-medium text-gray-400 bg-white px-2 py-1 rounded border shadow-sm"><span class="dot"></span><span>LIVE STREAM</span></div>
-                </div>
-                <div class="flex-1 live-screen shadow-2xl bg-black flex items-center justify-center min-h-0">
-                    <img id="screen" class="max-w-full max-h-full object-contain" src="about:blank" />
-                </div>
-                <div class="mt-4 p-4 bg-white rounded-xl border shadow-sm flex-shrink-0">
-                    <div class="text-[10px] font-bold text-gray-400 uppercase mb-2">Activity Log</div>
-                    <div id="log" class="text-xs font-mono text-gray-600 max-h-40 overflow-y-auto space-y-0.5">
-                        <div>Waiting for task...</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div id="approval" class="absolute inset-0 bg-gray-900/60 backdrop-blur-md z-50 flex items-center justify-center hidden">
-            <div class="bg-white rounded-2xl shadow-2xl w-[550px] p-8">
-                <h2 class="text-2xl font-bold text-gray-900 mb-2">Action Approval</h2>
-                <p id="app-reason" class="text-gray-500 text-sm mb-6">Confirm if the agent should proceed.</p>
-                <div class="bg-gray-50 rounded-lg p-4 font-mono text-xs mb-6 border border-gray-200 overflow-x-auto" id="app-code"></div>
-                <div class="flex space-x-4">
-                    <button onclick="sendApp(false)" class="flex-1 py-3 px-6 rounded-xl border-2 font-semibold hover:bg-gray-50 transition">Deny</button>
-                    <button onclick="sendApp(true)" class="flex-1 py-3 px-6 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition">Approve</button>
-                </div>
+        
+        <div id="messages" class="flex-1 overflow-y-auto p-6 flex flex-col"></div>
+        
+        <div class="input-area p-6 flex-shrink-0">
+            <div class="input-box rounded-lg flex items-end relative transition-all">
+                <textarea id="input" rows="1" class="w-full bg-transparent p-4 pr-12 text-sm outline-none resize-none" placeholder="Enter your goal..."></textarea>
+                <button id="send" class="absolute right-3 bottom-3 p-1.5 text-indigo-500 hover:text-indigo-400 transition bg-indigo-500/10 rounded-md"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg></button>
             </div>
         </div>
     </div>
+
+    <!-- RIGHT PANEL -->
+    <div class="right-panel w-[320px] flex flex-col flex-shrink-0 h-full p-4 gap-4">
+        <div class="flex items-center justify-between">
+            <h3 class="text-xs font-bold text-zinc-500 uppercase tracking-widest">Live View</h3>
+            <div class="flex items-center gap-2 text-[10px] font-medium text-zinc-400 bg-[#1a1a1a] px-2 py-1 rounded border border-[#2a2a2a]"><span class="dot bg-red-500 dot-pulse" id="live-dot"></span><span id="live-text">IDLE</span></div>
+        </div>
+        
+        <div class="live-screen rounded-lg flex-shrink-0 aspect-[16/10] flex items-center justify-center placeholder-anim">
+            <img id="screen" class="w-full h-full object-contain hidden" />
+            <span id="screen-placeholder" class="text-xs text-zinc-600 font-medium">Waiting for task...</span>
+        </div>
+        
+        <div class="text-xs font-bold text-zinc-500 uppercase tracking-widest mt-2">Activity Log</div>
+        <div id="log" class="activity-log flex-1 rounded-lg p-3 text-xs overflow-y-auto space-y-1.5"></div>
+        
+        <div class="stats-bar rounded-lg p-3 grid grid-cols-3 gap-2 text-center flex-shrink-0">
+            <div><div class="text-[10px] text-zinc-500 uppercase">Actions</div><div class="text-sm font-semibold" id="stat-actions">0</div></div>
+            <div><div class="text-[10px] text-zinc-500 uppercase">Subtasks</div><div class="text-sm font-semibold" id="stat-subtasks">0/0</div></div>
+            <div><div class="text-[10px] text-zinc-500 uppercase">Time</div><div class="text-sm font-semibold" id="stat-time">00:00</div></div>
+        </div>
+    </div>
+
+    <!-- APPROVAL MODAL -->
+    <div id="approval" class="absolute inset-0 modal-overlay z-50 flex items-center justify-center hidden">
+        <div class="modal-card rounded-xl shadow-2xl w-[550px] p-8 max-w-[90vw]">
+            <div class="flex items-center gap-3 mb-4">
+                <span class="bg-red-500/20 text-red-500 px-3 py-1 rounded text-sm font-bold uppercase tracking-wider" id="app-type">DANGER</span>
+                <h2 class="text-xl font-bold text-zinc-100">Action Approval</h2>
+            </div>
+            <p id="app-reason" class="text-zinc-400 text-sm mb-6">The agent wants to execute a potentially dangerous action.</p>
+            <div class="bg-black rounded-lg p-4 font-mono text-xs mb-6 border border-zinc-800 overflow-x-auto">
+                <pre><code id="app-code" class="language-json"></code></pre>
+            </div>
+            <div class="flex space-x-4">
+                <button onclick="sendApp(false)" class="flex-1 py-2.5 px-4 rounded-lg btn-outline font-medium">Deny (Esc)</button>
+                <button onclick="sendApp(true)" class="flex-1 py-2.5 px-4 rounded-lg btn-indigo font-medium">Approve (Enter)</button>
+            </div>
+        </div>
+    </div>
+
     <script>
-        // Store API key in sessionStorage only (not localStorage — blocked in sandboxed iframes)
         let KEY = sessionStorage.getItem("key");
         if (!KEY) {
             KEY = prompt("API Key:");
@@ -94,45 +190,67 @@
 
         const $ = id => document.getElementById(id);
         let task = null;
-        let planContainer = null;
+        let sse = null;
+        let isPaused = false;
+        let timer = null;
+        let startTime = 0;
         let subtaskEls = {};
+        let stats = { actions: 0, subDone: 0, subTotal: 0 };
 
-        const api = (p, m='GET', b=null) => fetch(p, {method:m, headers:{'Authorization':`Bearer ${KEY}`, 'Content-Type':'application/json'}, body:b?JSON.stringify(b):null}).then(r=>r.json());
+        const api = (p, m='GET', b=null) => fetch(p, {
+            method: m, 
+            headers: {'Authorization':`Bearer ${KEY}`, 'Content-Type':'application/json'}, 
+            body: b ? JSON.stringify(b) : null
+        }).then(r => r.ok ? r.json() : Promise.reject(r));
 
-        const addLog = text => {
-            const log = $('log');
-            const div = document.createElement('div');
-            div.textContent = text;
-            log.appendChild(div);
-            log.scrollTop = log.scrollHeight;
+        const init = async () => {
+            try {
+                const health = await api('/api/health');
+                $('version-tag').innerText = `v${health.version}`;
+                
+                const models = await api('/api/models');
+                const sel = $('model-id');
+                models.models.forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = m;
+                    opt.textContent = m.split('/').pop();
+                    sel.appendChild(opt);
+                });
+
+                const tasks = await api('/api/tasks');
+                tasks.tasks.reverse().forEach(t => renderHistoryItem(t));
+            } catch (e) {
+                console.error("Init failed", e);
+            }
         };
 
-        const start = async () => {
-            const goal = $('input').value.trim(); if(!goal) return;
-            task = Math.random().toString(36).slice(2);
-            subtaskEls = {};
-            planContainer = null;
-
-            msg(goal, 'user');
-            $('input').value = '';
-            $('task-title').innerText = goal.slice(0,30) + (goal.length > 30 ? '...' : '');
-            $('status-pill').innerText = 'Running';
-            $('status-pill').className = 'text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-blue-100 text-blue-600';
-
-            // Add to sidebar history
+        const renderHistoryItem = (t) => {
             const histItem = document.createElement('div');
-            histItem.className = 'task-history-item active';
-            const stamp = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-            histItem.innerHTML = `<div class="truncate">${goal.slice(0,40)}</div><div class="text-[10px] text-gray-500 mt-0.5">${stamp}</div>`;
-            histItem.onclick = () => {
-                document.querySelectorAll('.task-history-item').forEach(el => el.classList.remove('active'));
-                histItem.classList.add('active');
-            };
-            document.querySelectorAll('.task-history-item').forEach(el => el.classList.remove('active'));
+            histItem.className = 'task-history-item';
+            const color = t.status === 'running' ? 'text-indigo-400' : t.status === 'done' ? 'text-green-500' : t.status === 'failed' ? 'text-red-500' : 'text-zinc-500';
+            histItem.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <span class="dot ${color}"></span>
+                    <div class="truncate flex-1">${t.goal.slice(0, 38)}</div>
+                </div>
+            `;
             $('task-history').appendChild(histItem);
+        };
 
-            await api('/api/tasks', 'POST', {task_id:task, goal, model:$('model-id').value});
-            listen();
+        const updateClock = () => {
+            if (!startTime) return;
+            const s = Math.floor((Date.now() - startTime) / 1000);
+            $('stat-time').innerText = `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+        };
+
+        const logMsg = (text, type='info') => {
+            const log = $('log');
+            const div = document.createElement('div');
+            const color = type === 'ok' ? 'text-green-400' : type === 'fail' ? 'text-red-400' : type === 'warn' ? 'text-yellow-400' : 'text-zinc-400';
+            const stamp = new Date().toLocaleTimeString([], {hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit'});
+            div.innerHTML = `<span class="text-zinc-600">[${stamp}]</span> <span class="${color}">${text}</span>`;
+            log.appendChild(div);
+            log.scrollTop = log.scrollHeight;
         };
 
         const msg = (t, r) => {
@@ -144,23 +262,48 @@
             return d;
         };
 
+        const setStatus = (status, pulsing=false) => {
+            $('status-pill').innerText = status;
+            const dot = $('status-dot');
+            dot.className = 'dot ' + (pulsing ? 'dot-pulse ' : '');
+            if (status === 'Running') {
+                dot.classList.add('bg-indigo-500');
+                $('status-container').className = 'flex items-center gap-2 px-2.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20';
+                $('status-pill').className = 'text-[10px] font-bold uppercase tracking-widest text-indigo-400';
+            } else if (status === 'Complete') {
+                dot.classList.add('bg-green-500');
+                $('status-container').className = 'flex items-center gap-2 px-2.5 py-1 rounded-full bg-green-500/10 border border-green-500/20';
+                $('status-pill').className = 'text-[10px] font-bold uppercase tracking-widest text-green-400';
+            } else if (status === 'Error' || status === 'Failed') {
+                dot.classList.add('bg-red-500');
+                $('status-container').className = 'flex items-center gap-2 px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/20';
+                $('status-pill').className = 'text-[10px] font-bold uppercase tracking-widest text-red-400';
+            } else {
+                dot.classList.add('bg-zinc-500');
+                $('status-container').className = 'flex items-center gap-2 px-2.5 py-1 rounded-full bg-zinc-800 border border-zinc-700';
+                $('status-pill').className = 'text-[10px] font-bold uppercase tracking-widest text-zinc-400';
+            }
+        };
+
         const renderPlan = plan => {
-            planContainer = document.createElement('div');
+            const planContainer = document.createElement('div');
             planContainer.className = 'ai-bubble chat-bubble';
-            const title = document.createElement('div');
-            title.className = 'text-xs font-bold text-gray-500 uppercase mb-2';
-            title.textContent = 'Plan';
-            planContainer.appendChild(title);
-            const reasoning = document.createElement('div');
-            reasoning.className = 'text-xs text-gray-500 mb-3 italic';
-            reasoning.textContent = plan.reasoning;
-            planContainer.appendChild(reasoning);
+            planContainer.innerHTML = `
+                <div class="text-xs font-bold text-zinc-500 uppercase mb-2">Hierarchical Plan</div>
+                <div class="text-xs text-zinc-400 mb-3 italic">${plan.reasoning}</div>
+                <div class="space-y-1"></div>
+            `;
+            const list = planContainer.querySelector('.space-y-1');
+            stats.subTotal = (plan.sub_tasks || []).length;
+            stats.subDone = 0;
+            $('stat-subtasks').innerText = `0/${stats.subTotal}`;
+            
             (plan.sub_tasks || []).forEach((st, i) => {
                 const row = document.createElement('div');
                 row.className = 'subtask-item subtask-pending';
                 row.innerHTML = `<span class="subtask-icon">○</span><span>${i+1}. ${st.description}</span>`;
                 subtaskEls[st.id] = row;
-                planContainer.appendChild(row);
+                list.appendChild(row);
             });
             $('messages').appendChild(planContainer);
             planContainer.scrollIntoView({behavior:'smooth'});
@@ -170,16 +313,78 @@
             const el = subtaskEls[id];
             if (!el) return;
             el.className = `subtask-item subtask-${state}`;
-            const icon = state === 'done' ? '✓' : state === 'running' ? '●' : '○';
+            const icon = state === 'done' ? '✓' : state === 'running' ? '●' : state === 'failed' ? '✗' : '○';
             el.querySelector('.subtask-icon').textContent = icon;
+            if (state === 'done') {
+                stats.subDone++;
+                $('stat-subtasks').innerText = `${stats.subDone}/${stats.subTotal}`;
+            }
+        };
+
+        const start = async () => {
+            const goal = $('input').value.trim(); if(!goal) return;
+            task = Math.random().toString(36).slice(2);
+            subtaskEls = {};
+            stats = { actions: 0, subDone: 0, subTotal: 0 };
+            
+            msg(goal, 'user');
+            $('input').value = '';
+            $('task-title').innerText = goal;
+            setStatus('Running', true);
+            $('controls').style.display = 'flex';
+            
+            $('screen-placeholder').classList.add('hidden');
+            $('screen').classList.remove('hidden');
+            $('live-text').innerText = 'LIVE';
+
+            startTime = Date.now();
+            timer = setInterval(updateClock, 1000);
+            
+            logMsg('Initializing task...', 'info');
+            try {
+                await api('/api/tasks', 'POST', {task_id:task, goal, model:$('model-id').value});
+                listen();
+            } catch (e) {
+                setStatus('Error');
+                msg("Failed to start task.", "error");
+            }
+        };
+
+        const stopEverything = () => {
+            clearInterval(timer);
+            if (sse) sse.close();
+            $('controls').style.display = 'none';
+            $('live-text').innerText = 'IDLE';
+            $('live-dot').classList.remove('dot-pulse');
+        };
+
+        const cancelTask = async () => {
+            await api(`/api/tasks/${task}`, 'DELETE');
+            setStatus('Cancelled');
+            msg("Task cancelled by user.", "cancel");
+            stopEverything();
+        };
+
+        const togglePause = async () => {
+            isPaused = !isPaused;
+            await api(`/api/tasks/${task}/${isPaused ? 'pause' : 'resume'}`, 'POST');
+            $('btn-pause').innerText = isPaused ? 'Resume' : 'Pause';
+            $('btn-pause').className = isPaused ? 'btn-indigo px-3 py-1.5 rounded text-xs font-medium' : 'btn-outline px-3 py-1.5 rounded text-xs font-medium';
+            if (isPaused) {
+                setStatus('Paused');
+                logMsg('Task paused.', 'warn');
+            } else {
+                setStatus('Running', true);
+                logMsg('Task resumed.', 'info');
+            }
         };
 
         let currentSubtaskIdx = 0;
         let planSubtasks = [];
 
         const listen = () => {
-            const s = new EventSource(`/api/tasks/${task}/stream?token=${KEY}`);
-            s.onmessage = e => {
+            sse = new EventSource(`/api/tasks/${task}/stream?token=${KEY}`);
+            sse.onmessage = e => {
                 const d = JSON.parse(e.data);
 
                 if (d.type === 'plan') {
@@ -189,74 +394,86 @@
                 }
 
                 if (d.type === 'status') {
-                    addLog(d.message);
-                    // Track which subtask is running based on status messages
+                    logMsg(d.message);
                     const runningMatch = d.message && d.message.match(/Executing sub-task:/);
                     if (runningMatch && planSubtasks[currentSubtaskIdx]) {
-                        if (currentSubtaskIdx > 0) markSubtask(planSubtasks[currentSubtaskIdx-1].id, 'done');
+                        if (currentSubtaskIdx > 0 && subtaskEls[planSubtasks[currentSubtaskIdx-1].id].classList.contains('subtask-running')) {
+                            markSubtask(planSubtasks[currentSubtaskIdx-1].id, 'done');
+                        }
                         markSubtask(planSubtasks[currentSubtaskIdx].id, 'running');
                     }
                 }
 
-                if (d.type === 'action_start') addLog(`EXECUTING: ${d.action_type}`);
-
-                if (d.type === 'action_result') {
-                    const status = d.ok ? 'ok' : 'fail';
-                    const truncated = (d.output || '').slice(0, 80);
-                    addLog(`${d.action_id?.slice(0,6) || '?'} [${status}] ${truncated}`);
+                if (d.type === 'action_start') {
+                    logMsg(`EXEC: ${d.action_type}`, 'info');
                 }
 
-                if (d.type === 'screenshot') $('screen').src = `data:image/png;base64,${d.data}`;
+                if (d.type === 'action_result') {
+                    stats.actions++;
+                    $('stat-actions').innerText = stats.actions;
+                    const status = d.ok ? 'ok' : 'fail';
+                    const truncated = (d.output || '').slice(0, 60).replace(/\n/g, ' ');
+                    logMsg(`[${status.toUpperCase()}] ${truncated}`, status);
+                }
 
-                if (d.type === 'reflection' && d.success === false) {
-                    const w = document.createElement('div');
-                    w.className = 'warn-bubble chat-bubble';
-                    w.textContent = `⚠ Sub-task failed: ${d.reason || 'unknown reason'}`;
-                    $('messages').appendChild(w);
-                    w.scrollIntoView({behavior:'smooth'});
-                    // Mark current subtask as failed then advance
-                    if (planSubtasks[currentSubtaskIdx]) {
-                        markSubtask(planSubtasks[currentSubtaskIdx].id, 'pending');
-                    }
-                } else if (d.type === 'reflection' && d.success === true) {
-                    if (planSubtasks[currentSubtaskIdx]) {
-                        markSubtask(planSubtasks[currentSubtaskIdx].id, 'done');
-                        currentSubtaskIdx++;
+                if (d.type === 'screenshot') {
+                    $('screen').src = `data:image/png;base64,${d.data}`;
+                }
+
+                if (d.type === 'reflection') {
+                    if (d.success === false) {
+                        msg(`⚠ Failure: ${d.reason || 'unknown'}`, 'warn');
+                        if (planSubtasks[currentSubtaskIdx]) {
+                            markSubtask(planSubtasks[currentSubtaskIdx].id, 'failed');
+                        }
+                    } else if (d.success === true) {
+                        if (planSubtasks[currentSubtaskIdx]) {
+                            markSubtask(planSubtasks[currentSubtaskIdx].id, 'done');
+                            currentSubtaskIdx++;
+                        }
                     }
                 }
 
                 if (d.type === 'approval_required') {
-                    $('app-code').innerText = `${d.action?.type}: ${JSON.stringify(d.action?.args)}`;
+                    $('app-type').innerText = d.action.type;
+                    $('app-reason').innerText = d.reason || "High risk action requires approval.";
+                    $('app-code').innerText = JSON.stringify(d.action.args, null, 2);
+                    hljs.highlightElement($('app-code'));
                     $('approval').classList.remove('hidden');
                     window.tid = task;
                     window.aid = d.action_id;
                 }
 
                 if (d.type === 'error') {
-                    const errBubble = document.createElement('div');
-                    errBubble.className = 'error-bubble chat-bubble';
-                    errBubble.textContent = `Error: ${d.message}`;
-                    $('messages').appendChild(errBubble);
-                    errBubble.scrollIntoView({behavior:'smooth'});
-                    $('status-pill').innerText = 'Error';
-                    $('status-pill').className = 'text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-red-100 text-red-600';
-                    s.close();
+                    msg(`Error: ${d.message}`, 'error');
+                    setStatus('Error');
+                    stopEverything();
                 }
 
                 if (d.type === 'done') {
-                    // Mark last subtask done
-                    if (planSubtasks[currentSubtaskIdx]) markSubtask(planSubtasks[currentSubtaskIdx].id, 'done');
-                    $('status-pill').innerText = 'Complete';
-                    $('status-pill').className = 'text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-green-100 text-green-600';
-                    addLog('Task complete.');
-                    s.close();
+                    if (planSubtasks[currentSubtaskIdx] && d.complete) {
+                        markSubtask(planSubtasks[currentSubtaskIdx].id, 'done');
+                    }
+                    if (d.complete) {
+                        setStatus('Complete');
+                        msg("Task completed successfully! 🎉", "success");
+                        confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+                    } else {
+                        setStatus('Failed');
+                        msg(`Task failed: ${d.reason}`, "error");
+                    }
+                    stopEverything();
                 }
 
                 if (d.type === 'cancelled') {
-                    $('status-pill').innerText = 'Cancelled';
-                    $('status-pill').className = 'text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-gray-100 text-gray-400';
-                    s.close();
+                    setStatus('Cancelled');
+                    stopEverything();
                 }
+            };
+            
+            sse.onerror = () => {
+                logMsg("Lost connection to stream.", "error");
+                stopEverything();
             };
         };
 
@@ -266,7 +483,21 @@
         };
 
         $('send').onclick = start;
-        $('input').onkeydown = e => { if(e.key==='Enter' && !e.shiftKey) { e.preventDefault(); start(); } };
+        $('input').onkeydown = e => { 
+            if(e.key === 'Enter' && !e.shiftKey) { 
+                e.preventDefault(); 
+                start(); 
+            } 
+        };
+        
+        window.addEventListener('keydown', e => {
+            if (!$('approval').classList.contains('hidden')) {
+                if (e.key === 'Enter') sendApp(true);
+                if (e.key === 'Escape') sendApp(false);
+            }
+        });
+
+        init();
     </script>
 </body>
 </html>

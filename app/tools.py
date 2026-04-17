@@ -79,10 +79,47 @@ class ToolExecutor:
         pyautogui.keyUp(key)
         return ToolResult(ok=True, output=f"Held {key} for {duration}s")
 
-    def scroll(self, amount: int):
+    def scroll(self, amount: int, x: Optional[int] = None, y: Optional[int] = None, sw=1280, sh=800):
         import pyautogui
+        if x is not None and y is not None:
+            rx, ry = self._scale(x, y, sw, sh)
+            pyautogui.moveTo(rx, ry)
         pyautogui.scroll(amount)
         return ToolResult(ok=True, output=f"Scrolled {amount}")
+
+    def type_with_delay(self, text: str, delay: float = 0.05):
+        import pyautogui
+        pyautogui.write(text, interval=delay)
+        return ToolResult(ok=True, output=f"Typed text with {delay}s delay")
+
+    def find_on_screen(self, image_path: str):
+        import pyautogui
+        try:
+            p = self._safe_path(image_path)
+            res = pyautogui.locateOnScreen(str(p))
+            if res:
+                return ToolResult(ok=True, output=f"Found at {res}")
+            return ToolResult(ok=False, output="Not found on screen")
+        except Exception as e:
+            return ToolResult(ok=False, output=str(e))
+
+    def get_clipboard(self):
+        import pyperclip
+        text = pyperclip.paste()
+        return ToolResult(ok=True, output=text)
+
+    def set_clipboard(self, text: str):
+        import pyperclip
+        pyperclip.copy(text)
+        return ToolResult(ok=True, output="Clipboard updated")
+
+    def notify(self, message: str):
+        try:
+            from plyer import notification
+            notification.notify(title="AI Computer", message=message, timeout=5)
+            return ToolResult(ok=True, output="Notification sent")
+        except ImportError:
+            return ToolResult(ok=False, output="plyer not installed")
 
     def screenshot(self):
         import pyautogui
@@ -152,7 +189,12 @@ class ToolExecutor:
             ActionType.keyboard_type: lambda a: self.keyboard_type(a.args["text"]),
             ActionType.key_combo: lambda a: self.key(a.args["keys"]),
             ActionType.hold_key: lambda a: self.hold_key(a.args["key"], a.args.get("duration", 0.5)),
-            ActionType.scroll: lambda a: self.scroll(a.args.get("amount", 0)),
+            ActionType.scroll: lambda a: self.scroll(a.args.get("amount", 0), a.args.get("x"), a.args.get("y"), sw, sh),
+            ActionType.type_with_delay: lambda a: self.type_with_delay(a.args["text"], a.args.get("delay", 0.05)),
+            ActionType.find_on_screen: lambda a: self.find_on_screen(a.args["image_path"]),
+            ActionType.get_clipboard: lambda a: self.get_clipboard(),
+            ActionType.set_clipboard: lambda a: self.set_clipboard(a.args["text"]),
+            ActionType.notify: lambda a: self.notify(a.args["message"]),
             ActionType.screenshot: lambda a: self.screenshot(),
             ActionType.cursor_position: lambda a: self.cursor_position(),
             ActionType.wait_action: lambda a: self.wait_action(a.args.get("seconds", 1.0)),

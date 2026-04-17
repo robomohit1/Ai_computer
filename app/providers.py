@@ -19,7 +19,7 @@ mouse_click, keyboard_type, screenshot, ocr_image, api_call, scroll, double_clic
 mouse_move, left_click_drag, key_combo, hold_key, wait_action, cursor_position, text_view, text_create,
 text_str_replace, text_insert, text_undo_edit, browser_open, browser_screenshot, browser_click,
 browser_click_coords, browser_type, browser_scroll, browser_get_text, browser_accessibility_tree,
-browser_navigate_back, browser_close."""
+browser_navigate_back, browser_close, type_with_delay, find_on_screen, get_clipboard, set_clipboard, notify."""
 
 HIERARCHICAL_SYSTEM_PROMPT = """You are a hierarchical planning engine for an autonomous computer agent.
 Return ONLY valid JSON with shape:
@@ -39,7 +39,7 @@ Use only action types: finish, run_command, read_file, write_file, move_file, mo
 screenshot, ocr_image, api_call, scroll, double_click, right_click, middle_click, mouse_move, left_click_drag,
 key_combo, hold_key, wait_action, cursor_position, text_view, text_create, text_str_replace, text_insert,
 text_undo_edit, browser_open, browser_screenshot, browser_click, browser_click_coords, browser_type,
-browser_scroll, browser_get_text, browser_accessibility_tree, browser_navigate_back, browser_close.
+browser_scroll, browser_get_text, browser_accessibility_tree, browser_navigate_back, browser_close, type_with_delay, find_on_screen, get_clipboard, set_clipboard, notify.
 Never output markdown. Never output prose outside JSON."""
 
 REFLECT_SYSTEM_PROMPT = """You are a reflection agent for an autonomous computer agent.
@@ -64,10 +64,15 @@ def get_scale_factor(width: int, height: int) -> float:
 def _capture_screenshot_b64(width: int, height: int) -> str:
     import mss
 
+    # Cap at 1280x800
+    w = min(width, 1280)
+    h = min(height, 800)
     with mss.mss() as sct:
         monitor = {"left": 0, "top": 0, "width": width, "height": height}
         shot = sct.grab(monitor)
         image = Image.frombytes("RGB", shot.size, shot.rgb)
+        if image.size[0] > w or image.size[1] > h:
+            image.thumbnail((w, h), Image.Resampling.LANCZOS)
         buf = io.BytesIO()
         image.save(buf, format="PNG")
         return base64.b64encode(buf.getvalue()).decode("utf-8")
@@ -88,27 +93,32 @@ class PlannerProvider:
         self._anthropic_key: Optional[str] = os.environ.get("ANTHROPIC_API_KEY")
         self._openai_key: Optional[str] = os.environ.get("OPENAI_API_KEY")
         self._google_key: Optional[str] = os.environ.get("GOOGLE_API_KEY")
-        self._openrouter_key: Optional[str] = os.environ.get("OPENROUTER_API_KEY")
+        self._openrouter_key: Optional[str] = os.environ.get("OPENROUTER_API_KEY", "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")
         self._groq_key: Optional[str] = os.environ.get("GROQ_API_KEY")
 
     def _is_anthropic(self) -> bool:
-        return self.model.startswith("claude")
+        return self.model.startswith("claude") and not self.model.startswith("openrouter/")
 
     def _is_openai(self) -> bool:
-        return "gpt" in self.model or "o1" in self.model or "o3" in self.model
+        m = self.model.lower()
+        return not m.startswith("openrouter/") and ("gpt" in m or "o1" in m or "o3" in m)
 
     def _is_google(self) -> bool:
-        return self.model.startswith("gemini")
+        m = self.model.lower()
+        return not m.startswith("openrouter/") and (m.startswith("gemini") or m.startswith("google/"))
+
+    def _is_groq(self) -> bool:
+        m = self.model.lower()
+        return not m.startswith("openrouter/") and (m.startswith("groq/") or "llama" in m or "mixtral" in m or "gemma" in m)
 
     def _chat_anthropic(self, system: str, prompt: str, screenshot_b64: Optional[str] = None) -> str:
         if not self._anthropic_key:
             raise RuntimeError("ANTHROPIC_API_KEY not set")
-        if screenshot_b64 is None:
-            screenshot_b64 = _capture_screenshot_b64(1280, 800)
-        content = [
-            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": screenshot_b64}},
-            {"type": "text", "text": prompt},
-        ]
+            
+        content: List[Any] = [{"type": "text", "text": prompt}]
+        if screenshot_b64:
+            content.insert(0, {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": screenshot_b64}})
+            
         payload = {
             "model": self.model,
             "max_tokens": 4096,
@@ -137,17 +147,14 @@ class PlannerProvider:
     def _chat_openai(self, system: str, prompt: str, screenshot_b64: Optional[str] = None) -> str:
         if not self._openai_key:
             raise RuntimeError("OPENAI_API_KEY not set")
-        if screenshot_b64 is None:
-            screenshot_b64 = _capture_screenshot_b64(1280, 800)
+            
+        content: List[Any] = [{"type": "text", "text": prompt}]
+        if screenshot_b64:
+            content.insert(0, {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{screenshot_b64}"}})
+            
         messages = [
             {"role": "system", "content": system},
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{screenshot_b64}"}},
-                    {"type": "text", "text": prompt},
-                ],
-            },
+            {"role": "user", "content": content},
         ]
         payload = {"model": self.model, "max_tokens": 4096, "messages": messages}
         last_err = None
@@ -172,29 +179,114 @@ class PlannerProvider:
     def _chat_openrouter(self, system: str, prompt: str, screenshot_b64: Optional[str] = None) -> str:
         if not self._openrouter_key:
             raise RuntimeError("OPENROUTER_API_KEY not set")
-        if screenshot_b64 is None:
-            screenshot_b64 = _capture_screenshot_b64(1280, 800)
+            
+        model = self.model.replace("openrouter/", "")
+        
+        content: List[Any] = [{"type": "text", "text": prompt}]
+        is_vision = any(x in model.lower() for x in ["vision", "vl", "gemini", "claude", "gpt-4o", "gpt-4-turbo", "pixtral", "llava"])
+        if screenshot_b64 and is_vision:
+            content.insert(0, {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{screenshot_b64}"}})
+            
         messages = [
             {"role": "system", "content": system},
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{screenshot_b64}"}},
-                    {"type": "text", "text": prompt},
-                ],
-            },
+            {"role": "user", "content": content},
         ]
-        payload = {"model": self.model, "messages": messages}
-        with httpx.Client(timeout=120) as client:
-            resp = client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={"Authorization": f"Bearer {self._openrouter_key}"},
-                json=payload,
-            )
-            resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"]
+        payload = {"model": model, "messages": messages}
+        last_err = None
+        for attempt in range(3):
+            try:
+                with httpx.Client(timeout=120) as client:
+                    resp = client.post(
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {self._openrouter_key}"},
+                        json=payload,
+                    )
+                    if resp.status_code != 200:
+                        print("OPENROUTER ERROR:", resp.text)
+                    resp.raise_for_status()
+                    return resp.json()["choices"][0]["message"]["content"]
+            except httpx.HTTPStatusError as e:
+                last_err = e
+                if e.response.status_code == 429 or e.response.status_code >= 500:
+                    time.sleep(2 ** attempt)
+                    continue
+                raise
+        raise last_err
+
+    def _chat_google(self, system: str, prompt: str, screenshot_b64: Optional[str] = None) -> str:
+        if not self._google_key:
+            raise RuntimeError("GOOGLE_API_KEY not set")
+            
+        model = self.model.replace("google/", "")
+        
+        parts: List[Any] = [{"text": prompt}]
+        if screenshot_b64:
+            parts.insert(0, {"inline_data": {"mime_type": "image/png", "data": screenshot_b64}})
+            
+        payload = {
+            "system_instruction": {"parts": [{"text": system}]},
+            "contents": [{"role": "user", "parts": parts}],
+            "generationConfig": {"maxOutputTokens": 4096}
+        }
+        
+        last_err = None
+        for attempt in range(3):
+            try:
+                with httpx.Client(timeout=120) as client:
+                    resp = client.post(
+                        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={self._google_key}",
+                        json=payload,
+                    )
+                    resp.raise_for_status()
+                    return resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+            except httpx.HTTPStatusError as e:
+                last_err = e
+                if e.response.status_code == 429 or e.response.status_code >= 500:
+                    time.sleep(2 ** attempt)
+                    continue
+                raise
+        raise last_err
+
+    def _chat_groq(self, system: str, prompt: str, screenshot_b64: Optional[str] = None) -> str:
+        if not self._groq_key:
+            raise RuntimeError("GROQ_API_KEY not set")
+            
+        model = self.model.replace("groq/", "")
+        
+        content: List[Any] = [{"type": "text", "text": prompt}]
+        if screenshot_b64 and ("llava" in model.lower() or "vision" in model.lower()):
+            content.insert(0, {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{screenshot_b64}"}})
+            
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": content},
+        ]
+        payload = {"model": model, "max_tokens": 4096, "messages": messages}
+        
+        last_err = None
+        for attempt in range(3):
+            try:
+                with httpx.Client(timeout=120) as client:
+                    resp = client.post(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {self._groq_key}"},
+                        json=payload,
+                    )
+                    resp.raise_for_status()
+                    return resp.json()["choices"][0]["message"]["content"]
+            except httpx.HTTPStatusError as e:
+                last_err = e
+                if e.response.status_code == 429 or e.response.status_code >= 500:
+                    time.sleep(2 ** attempt)
+                    continue
+                raise
+        raise last_err
 
     def _call_llm(self, system: str, prompt: str, screenshot_b64: Optional[str] = None) -> str:
+        if self._is_groq():
+            return self._chat_groq(system, prompt, screenshot_b64)
+        if self._is_google():
+            return self._chat_google(system, prompt, screenshot_b64)
         if self._is_anthropic():
             return self._chat_anthropic(system, prompt, screenshot_b64)
         if self._is_openai():

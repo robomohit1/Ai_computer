@@ -48,6 +48,11 @@ class ActionType(str, Enum):
     browser_accessibility_tree = "browser_accessibility_tree"
     browser_navigate_back = "browser_navigate_back"
     browser_close = "browser_close"
+    type_with_delay = "type_with_delay"
+    find_on_screen = "find_on_screen"
+    get_clipboard = "get_clipboard"
+    set_clipboard = "set_clipboard"
+    notify = "notify"
 
 
 class Action(BaseModel):
@@ -88,6 +93,7 @@ class TaskRecord(BaseModel):
     id: str
     status: str = "pending"
     context: AgentContext
+    paused: bool = False
 
 
 class SubTask(BaseModel):

@@ -47,13 +47,50 @@ class ApprovalIn(BaseModel):
 async def root(): return FileResponse("static/index.html")
 
 
-@app.get("/api/health")
-async def health(): return {"status": "ok"}
+import time
 
+START_TIME = time.time()
+
+@app.get("/api/health")
+async def health():
+    return {
+        "status": "ok",
+        "version": "1.0.0",
+        "uptime_seconds": time.time() - START_TIME
+    }
 
 @app.get("/api/models")
 async def get_models():
-    return {"models": ["claude-3-5-sonnet-20241022", "claude-3-opus-20240229", "gpt-4o", "gemini-1.5-pro"]}
+    # Only return models if API keys are set
+    models = []
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        models.extend(["claude-3-5-sonnet-20241022", "claude-3-opus-20240229"])
+    if os.environ.get("OPENAI_API_KEY"):
+        models.append("gpt-4o")
+    if os.environ.get("GOOGLE_API_KEY"):
+        models.extend(["gemini-2.5-flash", "gemini-2.0-flash"])
+    if os.environ.get("GROQ_API_KEY"):
+        models.extend(["groq/llama-3.3-70b-versatile", "groq/llama-3.2-90b-vision-preview"])
+    if os.environ.get("OPENROUTER_API_KEY"):
+        models.extend([
+            "openrouter/anthropic/claude-3.5-sonnet",
+            "openrouter/google/gemini-2.0-flash-lite-preview-02-05:free",
+            "openrouter/meta-llama/llama-3.2-90b-vision-instruct:free",
+            "openrouter/qwen/qwen-2-vl-72b-instruct:free"
+        ])
+    return {"models": models}
+
+@app.get("/api/tasks", dependencies=[Depends(verify_token)])
+async def get_all_tasks():
+    res = []
+    for tid, t in _tasks.items():
+        res.append({
+            "id": tid,
+            "goal": t.context.goal,
+            "status": t.status,
+            "paused": t.paused
+        })
+    return {"tasks": res}
 
 
 @app.post("/api/tasks", dependencies=[Depends(verify_token)])
@@ -83,8 +120,40 @@ async def cancel_task(task_id: str):
     cancelled = service.cancel_task(task_id)
     if not cancelled:
         raise HTTPException(status_code=404, detail="Task not found or already complete")
+    if task_id in _tasks:
+        _tasks[task_id].status = "cancelled"
     log_emitter.emit(task_id, "cancelled", {"message": "Task cancelled by user"})
     return {"task_id": task_id, "status": "cancelled"}
+
+@app.post("/api/tasks/{task_id}/pause", dependencies=[Depends(verify_token)])
+async def pause_task(task_id: str):
+    if task_id not in _tasks:
+        raise HTTPException(status_code=404, detail="Task not found")
+    _tasks[task_id].paused = True
+    service.pause_task(task_id)
+    log_emitter.emit(task_id, "status", {"message": "Task paused."})
+    return {"status": "paused"}
+
+@app.post("/api/tasks/{task_id}/resume", dependencies=[Depends(verify_token)])
+async def resume_task(task_id: str):
+    if task_id not in _tasks:
+        raise HTTPException(status_code=404, detail="Task not found")
+    _tasks[task_id].paused = False
+    service.resume_task(task_id)
+    log_emitter.emit(task_id, "status", {"message": "Task resumed."})
+    return {"status": "resumed"}
+
+@app.get("/api/tasks/{task_id}/log", dependencies=[Depends(verify_token)])
+async def get_task_log(task_id: str):
+    log_path = Path(f"workspace/logs/{task_id}.jsonl")
+    if not log_path.exists():
+        raise HTTPException(status_code=404, detail="Log file not found")
+    lines = []
+    with open(log_path, "r", encoding="utf-8") as f:
+        for line in f:
+            if line.strip():
+                lines.append(json.loads(line))
+    return {"log": lines}
 
 
 @app.get("/api/tasks/{task_id}/stream")
