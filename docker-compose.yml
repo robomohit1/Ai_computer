@@ -1,16 +1,14 @@
-version: "3.8"
+version: '3.8'
 services:
-  agent:
+  ai-computer:
     build: .
     ports:
       - "8000:8000"
-      - "5900:5900"
     environment:
-      - DISPLAY=:99
-      - SCREEN_WIDTH=1280
-      - SCREEN_HEIGHT=800
-      - AGENT_API_KEY=${AGENT_API_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - BEARER_TOKEN=${BEARER_TOKEN}
+      - WORKSPACE_DIR=/app/workspace
     volumes:
       - ./workspace:/app/workspace
+    restart: unless-stopped
