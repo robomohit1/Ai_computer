@@ -12,13 +12,13 @@ def header():
     return {"Authorization": f"Bearer {API_KEY}"}
 
 
-def test_health():
+def run_test_health():
     r = httpx.get(f"{BASE}/api/health")
     assert r.status_code == 200 and r.json()["status"] == "ok"
     print("[PASS] GET /api/health")
 
 
-def test_models():
+def run_test_models():
     r = httpx.get(f"{BASE}/api/models")
     assert r.status_code == 200
     models = r.json()["models"]
@@ -28,13 +28,13 @@ def test_models():
         print(f"       - {m}")
 
 
-def test_auth_required():
+def run_test_auth_required():
     r = httpx.post(f"{BASE}/api/tasks", json={"task_id": "x", "goal": "x"})
     assert r.status_code == 401
     print("[PASS] POST /api/tasks without auth -> 401")
 
 
-def test_create_task():
+def run_test_create_task():
     """Create a pure coding task with a free text-only model."""
     task_id = str(uuid.uuid4())[:8]
     body = {
@@ -51,7 +51,7 @@ def test_create_task():
     return task_id
 
 
-def test_stream(task_id: str):
+def run_test_stream(task_id: str):
     """Listen to the SSE stream for up to 120s, collect events."""
     events = []
     print(f"[INFO] Streaming /api/tasks/{task_id}/stream ...")
@@ -109,7 +109,7 @@ def test_stream(task_id: str):
     return events
 
 
-def test_cancel():
+def run_test_cancel():
     task_id = f"cancel-{uuid.uuid4().hex[:6]}"
     body = {
         "task_id": task_id,

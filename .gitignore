@@ -4,3 +4,4 @@ __pycache__/
 workspace/
 .pytest_cache/
 test_workspace/
+chroma_memory/

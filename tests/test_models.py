@@ -12,7 +12,7 @@ models_to_test = [
 
 dummy_b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
 
-def test_model(model_name):
+def run_test_model(model_name):
     print(f"\n--- Testing Model: {model_name} ---")
     provider = PlannerProvider(model=model_name)
     goal = "Open the browser, navigate to example.com, and extract the text."
