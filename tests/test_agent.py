@@ -153,7 +153,7 @@ def test_models():
 
 # Test 12: POST /api/tasks
 def test_post_tasks():
-    response = client.post("/api/tasks", json={"task_id": "test_1", "goal": "test"}, headers=headers)
+    response = client.post("/api/tasks", json={"task_id": "test_1", "goal": "test goal"}, headers=headers)
     assert response.status_code == 200
     assert response.json()["status"] == "running"
 
@@ -161,7 +161,7 @@ def test_post_tasks():
 def test_delete_tasks():
     # Make sure we use a mock for AgentService.cancel_task to avoid async timing issues
     with patch("app.main.service.cancel_task", return_value=True):
-        client.post("/api/tasks", json={"task_id": "test_2", "goal": "test"}, headers=headers)
+        client.post("/api/tasks", json={"task_id": "test_2", "goal": "test goal"}, headers=headers)
         response = client.delete("/api/tasks/test_2", headers=headers)
         assert response.status_code == 200
         assert response.json()["status"] == "cancelled"

@@ -28,7 +28,10 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Security(bear
     if credentials is None or credentials.credentials != API_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-service = AgentService(Path("workspace"), log_emitter=log_emitter)
+workspace_dir = Path("workspace")
+workspace_dir.mkdir(parents=True, exist_ok=True)
+(workspace_dir / "logs").mkdir(parents=True, exist_ok=True)
+service = AgentService(workspace_dir, log_emitter=log_emitter)
 
 
 from pydantic import BaseModel, Field

@@ -18,13 +18,13 @@ def test_config_mask_and_auth(monkeypatch):
     body = r.json()
     pass
     pass  # config removed
-    r2 = client.post("/api/tasks", json={"task_id": "1", "goal": "x"})
+    r2 = client.post("/api/tasks", json={"task_id": "1", "goal": "test goal"})
     assert r2.status_code == 401
 
 
 def test_post_with_auth(monkeypatch):
     client, m = _client(monkeypatch)
-    r = client.post("/api/tasks", json={"task_id": "1", "goal": "x"}, headers={"Authorization": "Bearer token123"})
+    r = client.post("/api/tasks", json={"task_id": "1", "goal": "test goal"}, headers={"Authorization": "Bearer token123"})
     pass  # config removed
 
 
