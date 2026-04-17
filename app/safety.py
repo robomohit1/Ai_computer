@@ -6,6 +6,15 @@ from .models import Action, ActionDecision, DangerLevel
 class SafetyManager:
     def evaluate(self, action: Action, safe_mode: bool = True) -> ActionDecision:
         t = action.type.value
+
+        high_risk = {"run_command", "write_file", "move_file", "text_create", "text_str_replace", "text_insert"}
+        if t in high_risk:
+            return ActionDecision(
+                danger=DangerLevel.high,
+                reason="filesystem/shell mutation",
+                requires_approval=True,
+            )
+
         low = {
             "scroll",
             "mouse_move",
@@ -18,7 +27,15 @@ class SafetyManager:
             "browser_navigate_back",
             "browser_close",
         }
-        medium = {"double_click", "right_click", "middle_click", "browser_click", "browser_click_coords", "browser_type", "browser_scroll"}
+        medium = {
+            "double_click",
+            "right_click",
+            "middle_click",
+            "browser_click",
+            "browser_click_coords",
+            "browser_type",
+            "browser_scroll",
+        }
         if t in low:
             return ActionDecision(danger=DangerLevel.low, reason="low risk", requires_approval=False)
         if t == "left_click_drag":

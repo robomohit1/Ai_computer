@@ -58,7 +58,6 @@ async def get_models():
 
 @app.post("/api/tasks", dependencies=[Depends(verify_token)])
 async def create_task(body: TaskIn):
-    # init_task schedules run_task internally — do NOT call run_task again here
     record = service.init_task(
         task_id=body.task_id,
         goal=body.goal,
@@ -79,6 +78,15 @@ async def get_task(task_id: str, credentials: HTTPAuthorizationCredentials = Sec
     return record
 
 
+@app.delete("/api/tasks/{task_id}", dependencies=[Depends(verify_token)])
+async def cancel_task(task_id: str):
+    cancelled = service.cancel_task(task_id)
+    if not cancelled:
+        raise HTTPException(status_code=404, detail="Task not found or already complete")
+    log_emitter.emit(task_id, "cancelled", {"message": "Task cancelled by user"})
+    return {"task_id": task_id, "status": "cancelled"}
+
+
 @app.get("/api/tasks/{task_id}/stream")
 async def stream_task(task_id: str, request: Request, token: Optional[str] = None):
     p_token = token or ""
@@ -96,7 +104,7 @@ async def stream_task(task_id: str, request: Request, token: Optional[str] = Non
                 try:
                     msg = await asyncio.wait_for(q.get(), timeout=30.0)
                     yield f"data: {json.dumps(msg)}\n\n"
-                    if msg.get("type") in ("done", "error"):
+                    if msg.get("type") in ("done", "error", "cancelled"):
                         break
                 except asyncio.TimeoutError:
                     yield ": keepalive\n\n"
@@ -108,6 +116,5 @@ async def stream_task(task_id: str, request: Request, token: Optional[str] = Non
 
 @app.post("/api/approvals", dependencies=[Depends(verify_token)])
 async def approvals(body: ApprovalIn):
-    # fix: pass task_id so submit_approval can resolve the correct future
     service.submit_approval(body.task_id, body.action_id, body.approve)
     return {"ok": True}

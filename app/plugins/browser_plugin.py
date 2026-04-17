@@ -7,66 +7,90 @@ _pw = None
 _browser = None
 _page = None
 
-def _ensure_browser(headless: bool = True):
+
+async def _ensure_browser(headless: bool = True):
     global _pw, _browser, _page
     if _browser is None:
-        from playwright.sync_api import sync_playwright
-        _pw = sync_playwright().start()
-        _browser = _pw.chromium.launch(headless=headless)
-        _page = _browser.new_page()
+        from playwright.async_api import async_playwright
+        _pw = await async_playwright().start()
+        _browser = await _pw.chromium.launch(headless=headless)
+        _page = await _browser.new_page()
 
-def browser_open(url: str, headless: bool = True) -> str:
-    _ensure_browser(headless)
-    _page.goto(url, wait_until="domcontentloaded")
+
+async def browser_open(url: str, headless: bool = True) -> str:
+    await _ensure_browser(headless)
+    await _page.goto(url, wait_until="domcontentloaded")
     return f"Opened: {_page.url}"
 
-def browser_screenshot() -> str:
-    _ensure_browser()
-    data = _page.screenshot(type="png")
+
+async def browser_screenshot() -> str:
+    await _ensure_browser()
+    data = await _page.screenshot(type="png")
     return base64.b64encode(data).decode("utf-8")
 
-def browser_click(selector: str) -> str:
-    _ensure_browser()
-    _page.click(selector)
+
+async def browser_click(selector: str) -> str:
+    await _ensure_browser()
+    await _page.click(selector)
     return f"Clicked {selector}"
 
-def browser_type(selector: str, text: str) -> str:
-    _ensure_browser()
-    _page.fill(selector, text)
+
+async def browser_click_coords(x: int, y: int) -> str:
+    await _ensure_browser()
+    await _page.mouse.click(x, y)
+    return f"Clicked coords ({x}, {y})"
+
+
+async def browser_type(selector: str, text: str) -> str:
+    await _ensure_browser()
+    await _page.fill(selector, text)
     return f"Typed into {selector}"
 
-def browser_scroll(direction: str = "down", amount: int = 500) -> str:
-    _ensure_browser()
+
+async def browser_scroll(direction: str = "down", amount: int = 500) -> str:
+    await _ensure_browser()
     if direction == "down":
-        _page.evaluate(f"window.scrollBy(0, {amount})")
+        await _page.evaluate(f"window.scrollBy(0, {amount})")
     else:
-        _page.evaluate(f"window.scrollBy(0, -{amount})")
+        await _page.evaluate(f"window.scrollBy(0, -{amount})")
     return f"Scrolled {direction}"
 
-def browser_get_text() -> str:
-    _ensure_browser()
-    return _page.content()
 
-def browser_accessibility_tree() -> str:
-    _ensure_browser()
-    return json.dumps(_page.accessibility.snapshot())
+async def browser_get_text() -> str:
+    await _ensure_browser()
+    return await _page.content()
 
-def browser_close() -> str:
+
+async def browser_accessibility_tree() -> str:
+    await _ensure_browser()
+    return json.dumps(await _page.accessibility.snapshot())
+
+
+async def browser_navigate_back() -> str:
+    await _ensure_browser()
+    await _page.go_back()
+    return "Navigated back"
+
+
+async def browser_close() -> str:
     global _pw, _browser, _page
     if _browser:
-        _browser.close()
-        _pw.stop()
+        await _browser.close()
+        await _pw.stop()
         _pw = _browser = _page = None
     return "Browser closed"
+
 
 def handlers():
     return {
         "browser_open": browser_open,
         "browser_screenshot": browser_screenshot,
         "browser_click": browser_click,
+        "browser_click_coords": browser_click_coords,
         "browser_type": browser_type,
         "browser_scroll": browser_scroll,
         "browser_get_text": browser_get_text,
         "browser_accessibility_tree": browser_accessibility_tree,
+        "browser_navigate_back": browser_navigate_back,
         "browser_close": browser_close,
     }

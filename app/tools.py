@@ -1,10 +1,12 @@
 from __future__ import annotations
+import asyncio
 import json
 import time
 import subprocess
 import os
 import base64
 import io
+import shutil
 from pathlib import Path
 from typing import Any, Dict, Optional
 import mss
@@ -16,15 +18,17 @@ except ImportError:
 
 from .models import Action, ActionType, ToolError, ToolResult
 from .providers import get_scale_factor
+from .text_editor import TextEditorTool
+
 
 class ToolExecutor:
     def __init__(self, workspace: Path, text_editor=None, plugin_registry=None):
         self.workspace = workspace.resolve()
-        self.text_editor = text_editor
+        self.text_editor = TextEditorTool(workspace)
         self.plugin_registry = plugin_registry
         import pyautogui
         pyautogui.PAUSE = 0
-        pyautogui.FAILSAFE = False # Be careful with this
+        pyautogui.FAILSAFE = False
 
     def _safe_path(self, value: str) -> Path:
         candidate = (self.workspace / value).resolve() if not Path(value).is_absolute() else Path(value).resolve()
@@ -35,7 +39,6 @@ class ToolExecutor:
     def _scale(self, x: int, y: int, sw: int, sh: int):
         import pyautogui
         screen_w, screen_h = pyautogui.size()
-        # Scale from agent's view (sw, sh) to real screen (screen_w, screen_h)
         rx = int(x * screen_w / sw)
         ry = int(y * screen_h / sh)
         return rx, ry
@@ -63,12 +66,18 @@ class ToolExecutor:
         pyautogui.write(text, interval=0.01)
         return ToolResult(ok=True, output="Typed text")
 
-    def key(self, text: str):
+    def key(self, keys: str):
         import pyautogui
-        keys = text.split(" ")
-        for k in keys:
-            pyautogui.press(k)
-        return ToolResult(ok=True, output=f"Pressed keys: {text}")
+        parts = [p.strip() for p in keys.split("+") if p.strip()]
+        pyautogui.hotkey(*parts)
+        return ToolResult(ok=True, output=f"Pressed hotkey: {keys}")
+
+    def hold_key(self, key: str, duration: float = 0.5):
+        import pyautogui
+        pyautogui.keyDown(key)
+        time.sleep(duration)
+        pyautogui.keyUp(key)
+        return ToolResult(ok=True, output=f"Held {key} for {duration}s")
 
     def scroll(self, amount: int):
         import pyautogui
@@ -85,7 +94,7 @@ class ToolExecutor:
             buf = io.BytesIO()
             img.save(buf, format="PNG")
             b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-            return ToolResult(ok=True, output=f"Screenshot captured", base64_image=b64)
+            return ToolResult(ok=True, output="Screenshot captured", base64_image=b64)
 
     def cursor_position(self):
         import pyautogui
@@ -107,10 +116,7 @@ class ToolExecutor:
     def run_command(self, command: str):
         try:
             res = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=60, cwd=self.workspace)
-            return ToolResult(ok=res.returncode==0, output=f"STDOUT:
-{res.stdout}
-STDERR:
-{res.stderr}")
+            return ToolResult(ok=res.returncode == 0, output=f"STDOUT:\n{res.stdout}\nSTDERR:\n{res.stderr}")
         except Exception as e:
             return ToolResult(ok=False, output=str(e))
 
@@ -124,7 +130,18 @@ STDERR:
         p.write_text(content)
         return ToolResult(ok=True, output=f"Wrote to {path}")
 
-    def run_action(self, action: Action, sw=1280, sh=800) -> ToolResult:
+    def move_file(self, source: str, destination: str):
+        src = self._safe_path(source)
+        dst = self._safe_path(destination)
+        shutil.move(str(src), str(dst))
+        return ToolResult(ok=True, output=f"Moved {source} to {destination}")
+
+    def api_call(self, method: str, url: str, headers: dict = None, body: dict = None):
+        import httpx
+        resp = httpx.request(method, url, headers=headers or {}, json=body)
+        return ToolResult(ok=True, output=resp.text)
+
+    async def run_action(self, action: Action, sw=1280, sh=800) -> ToolResult:
         handlers = {
             ActionType.mouse_move: lambda a: self.mouse_move(a.args["x"], a.args["y"], sw, sh),
             ActionType.mouse_click: lambda a: self.mouse_click(a.args["x"], a.args["y"], a.args.get("button", "left"), 1, sw, sh),
@@ -133,7 +150,8 @@ STDERR:
             ActionType.middle_click: lambda a: self.mouse_click(a.args["x"], a.args["y"], "middle", 1, sw, sh),
             ActionType.left_click_drag: lambda a: self.left_click_drag(a.args["x"], a.args["y"], sw, sh),
             ActionType.keyboard_type: lambda a: self.keyboard_type(a.args["text"]),
-            ActionType.key_combo: lambda a: self.key(a.args["text"]),
+            ActionType.key_combo: lambda a: self.key(a.args["keys"]),
+            ActionType.hold_key: lambda a: self.hold_key(a.args["key"], a.args.get("duration", 0.5)),
             ActionType.scroll: lambda a: self.scroll(a.args.get("amount", 0)),
             ActionType.screenshot: lambda a: self.screenshot(),
             ActionType.cursor_position: lambda a: self.cursor_position(),
@@ -142,16 +160,37 @@ STDERR:
             ActionType.run_command: lambda a: self.run_command(a.args["command"]),
             ActionType.read_file: lambda a: self.read_file(a.args["path"]),
             ActionType.write_file: lambda a: self.write_file(a.args["path"], a.args["content"]),
+            ActionType.move_file: lambda a: self.move_file(a.args["source"], a.args["destination"]),
+            ActionType.api_call: lambda a: self.api_call(
+                a.args["method"], a.args["url"], a.args.get("headers"), a.args.get("body")
+            ),
+            ActionType.text_view: lambda a: self.text_editor.view(a.args["path"], a.args.get("view_range")),
+            ActionType.text_create: lambda a: self.text_editor.create(a.args["path"], a.args["file_text"]),
+            ActionType.text_str_replace: lambda a: self.text_editor.str_replace(
+                a.args["path"], a.args["old_str"], a.args["new_str"]
+            ),
+            ActionType.text_insert: lambda a: self.text_editor.insert(
+                a.args["path"], a.args["insert_line"], a.args["new_str"]
+            ),
+            ActionType.text_undo_edit: lambda a: self.text_editor.undo_edit(a.args["path"]),
         }
         if action.type in handlers:
             try:
                 return handlers[action.type](action)
             except Exception as e:
                 return ToolResult(ok=False, output=f"Error executing {action.type}: {str(e)}")
-        
+
         if self.plugin_registry:
             h = self.plugin_registry.handlers()
             if action.type.value in h:
-                return ToolResult(ok=True, output=str(h[action.type.value](**action.args)))
-        
+                try:
+                    handler = h[action.type.value]
+                    if asyncio.iscoroutinefunction(handler):
+                        result = await handler(**action.args)
+                    else:
+                        result = handler(**action.args)
+                    return ToolResult(ok=True, output=str(result))
+                except Exception as e:
+                    return ToolResult(ok=False, output=f"Plugin error: {str(e)}")
+
         return ToolResult(ok=False, output=f"Unknown action type: {action.type}")

@@ -12,15 +12,25 @@
         .chat-bubble { max-width: 80%; padding: 12px 16px; border-radius: 12px; margin-bottom: 12px; position: relative; }
         .user-bubble { background: #fff; border: 1px solid #e5e5e5; align-self: flex-end; }
         .ai-bubble { background: #f0f0f0; align-self: flex-start; }
+        .warn-bubble { background: #fef3c7; border: 1px solid #f59e0b; align-self: flex-start; }
+        .error-bubble { background: #fee2e2; border: 1px solid #ef4444; align-self: flex-start; }
         .live-screen { background: #000; border-radius: 8px; overflow: hidden; position: relative; border: 4px solid #333; }
         .dot { height: 10px; width: 10px; background-color: #ef4444; border-radius: 50%; display: inline-block; animation: pulse 2s infinite; }
         @keyframes pulse { 0% { transform: scale(0.9); opacity: 0.7; } 70% { transform: scale(1.1); opacity: 1; } 100% { transform: scale(0.9); opacity: 0.7; } }
+        .subtask-item { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; font-size: 0.8rem; }
+        .subtask-icon { flex-shrink: 0; width: 18px; height: 18px; margin-top: 1px; }
+        .subtask-pending { color: #9ca3af; }
+        .subtask-running { color: #3b82f6; animation: pulse 1.5s infinite; }
+        .subtask-done { color: #22c55e; }
+        .task-history-item { padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; color: #d1d5db; transition: background 0.15s; }
+        .task-history-item:hover { background: #2d2f31; }
+        .task-history-item.active { background: #3d3f41; }
     </style>
 </head>
 <body class="flex h-screen overflow-hidden">
     <div class="sidebar flex flex-col h-full shadow-xl">
         <div class="p-6 border-b border-gray-700 font-bold text-xl tracking-tight">AI Computer</div>
-        <div class="flex-1 overflow-y-auto p-4 space-y-2" id="task-history"></div>
+        <div class="flex-1 overflow-y-auto p-4 space-y-1" id="task-history"></div>
         <div class="p-4 border-t border-gray-700"><button onclick="location.reload()" class="w-full bg-gray-700 hover:bg-gray-600 py-2 rounded text-sm transition">New Session</button></div>
     </div>
     <div class="flex-1 flex flex-col h-full relative">
@@ -31,6 +41,7 @@
             </div>
             <select id="model-id" class="text-sm bg-gray-50 border rounded-md px-3 py-1.5 outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+                <option value="claude-3-opus-20240229">Claude 3 Opus</option>
                 <option value="gpt-4o">GPT-4o</option>
                 <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
             </select>
@@ -45,17 +56,19 @@
                     </div>
                 </div>
             </div>
-            <div class="w-1/2 flex flex-col p-8 bg-gray-100 h-full">
+            <div class="w-1/2 flex flex-col p-8 bg-gray-100 h-full overflow-hidden">
                 <div class="flex items-center justify-between mb-4">
                     <h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest">Visual Feedback</h3>
                     <div class="flex items-center space-x-2 text-[10px] font-medium text-gray-400 bg-white px-2 py-1 rounded border shadow-sm"><span class="dot"></span><span>LIVE STREAM</span></div>
                 </div>
-                <div class="flex-1 live-screen shadow-2xl bg-black flex items-center justify-center">
+                <div class="flex-1 live-screen shadow-2xl bg-black flex items-center justify-center min-h-0">
                     <img id="screen" class="max-w-full max-h-full object-contain" src="about:blank" />
                 </div>
-                <div class="mt-6 p-5 bg-white rounded-xl border shadow-sm">
+                <div class="mt-4 p-4 bg-white rounded-xl border shadow-sm flex-shrink-0">
                     <div class="text-[10px] font-bold text-gray-400 uppercase mb-2">Activity Log</div>
-                    <div id="log" class="text-xs font-mono text-gray-600 line-clamp-2">Waiting for task...</div>
+                    <div id="log" class="text-xs font-mono text-gray-600 max-h-40 overflow-y-auto space-y-0.5">
+                        <div>Waiting for task...</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -72,37 +85,186 @@
         </div>
     </div>
     <script>
-        const KEY = localStorage.getItem("key") || prompt("API Key:");
-        localStorage.setItem("key", KEY);
+        // Store API key in sessionStorage only (not localStorage — blocked in sandboxed iframes)
+        let KEY = sessionStorage.getItem("key");
+        if (!KEY) {
+            KEY = prompt("API Key:");
+            if (KEY) sessionStorage.setItem("key", KEY);
+        }
+
         const $ = id => document.getElementById(id);
         let task = null;
+        let planContainer = null;
+        let subtaskEls = {};
 
         const api = (p, m='GET', b=null) => fetch(p, {method:m, headers:{'Authorization':`Bearer ${KEY}`, 'Content-Type':'application/json'}, body:b?JSON.stringify(b):null}).then(r=>r.json());
 
+        const addLog = text => {
+            const log = $('log');
+            const div = document.createElement('div');
+            div.textContent = text;
+            log.appendChild(div);
+            log.scrollTop = log.scrollHeight;
+        };
+
         const start = async () => {
-            const goal = $('input').value; if(!goal) return;
+            const goal = $('input').value.trim(); if(!goal) return;
             task = Math.random().toString(36).slice(2);
-            msg(goal, 'user'); $('input').value = '';
-            $('task-title').innerText = goal.slice(0,30)+'...';
-            $('status-pill').innerText = 'Running'; $('status-pill').className = 'text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-blue-100 text-blue-600';
+            subtaskEls = {};
+            planContainer = null;
+
+            msg(goal, 'user');
+            $('input').value = '';
+            $('task-title').innerText = goal.slice(0,30) + (goal.length > 30 ? '...' : '');
+            $('status-pill').innerText = 'Running';
+            $('status-pill').className = 'text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-blue-100 text-blue-600';
+
+            // Add to sidebar history
+            const histItem = document.createElement('div');
+            histItem.className = 'task-history-item active';
+            const stamp = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+            histItem.innerHTML = `<div class="truncate">${goal.slice(0,40)}</div><div class="text-[10px] text-gray-500 mt-0.5">${stamp}</div>`;
+            histItem.onclick = () => {
+                document.querySelectorAll('.task-history-item').forEach(el => el.classList.remove('active'));
+                histItem.classList.add('active');
+            };
+            document.querySelectorAll('.task-history-item').forEach(el => el.classList.remove('active'));
+            $('task-history').appendChild(histItem);
+
             await api('/api/tasks', 'POST', {task_id:task, goal, model:$('model-id').value});
             listen();
         };
 
-        const msg = (t, r) => { const d = document.createElement('div'); d.className = `${r}-bubble chat-bubble`; d.innerText = t; $('messages').appendChild(d); d.scrollIntoView({behavior:'smooth'}); };
+        const msg = (t, r) => {
+            const d = document.createElement('div');
+            d.className = `${r}-bubble chat-bubble`;
+            d.innerText = t;
+            $('messages').appendChild(d);
+            d.scrollIntoView({behavior:'smooth'});
+            return d;
+        };
+
+        const renderPlan = plan => {
+            planContainer = document.createElement('div');
+            planContainer.className = 'ai-bubble chat-bubble';
+            const title = document.createElement('div');
+            title.className = 'text-xs font-bold text-gray-500 uppercase mb-2';
+            title.textContent = 'Plan';
+            planContainer.appendChild(title);
+            const reasoning = document.createElement('div');
+            reasoning.className = 'text-xs text-gray-500 mb-3 italic';
+            reasoning.textContent = plan.reasoning;
+            planContainer.appendChild(reasoning);
+            (plan.sub_tasks || []).forEach((st, i) => {
+                const row = document.createElement('div');
+                row.className = 'subtask-item subtask-pending';
+                row.innerHTML = `<span class="subtask-icon">○</span><span>${i+1}. ${st.description}</span>`;
+                subtaskEls[st.id] = row;
+                planContainer.appendChild(row);
+            });
+            $('messages').appendChild(planContainer);
+            planContainer.scrollIntoView({behavior:'smooth'});
+        };
+
+        const markSubtask = (id, state) => {
+            const el = subtaskEls[id];
+            if (!el) return;
+            el.className = `subtask-item subtask-${state}`;
+            const icon = state === 'done' ? '✓' : state === 'running' ? '●' : '○';
+            el.querySelector('.subtask-icon').textContent = icon;
+        };
+
+        let currentSubtaskIdx = 0;
+        let planSubtasks = [];
 
         const listen = () => {
             const s = new EventSource(`/api/tasks/${task}/stream?token=${KEY}`);
             s.onmessage = e => {
                 const d = JSON.parse(e.data);
-                if(d.type==='action_start') $('log').innerText = `EXECUTING: ${d.action_type}`;
-                if(d.type==='screenshot') $('screen').src = `data:image/png;base64,${d.screenshot_b64}`;
-                if(d.type==='approval_required') { $('app-code').innerText = `${d.action_type}: ${JSON.stringify(d.args)}`; $('approval').classList.remove('hidden'); window.aid = d.action_id; }
-                if(d.type==='done') { $('status-pill').innerText = 'Complete'; $('status-pill').className = 'text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-green-100 text-green-600'; s.close(); }
+
+                if (d.type === 'plan') {
+                    planSubtasks = d.sub_tasks || [];
+                    currentSubtaskIdx = 0;
+                    renderPlan(d);
+                }
+
+                if (d.type === 'status') {
+                    addLog(d.message);
+                    // Track which subtask is running based on status messages
+                    const runningMatch = d.message && d.message.match(/Executing sub-task:/);
+                    if (runningMatch && planSubtasks[currentSubtaskIdx]) {
+                        if (currentSubtaskIdx > 0) markSubtask(planSubtasks[currentSubtaskIdx-1].id, 'done');
+                        markSubtask(planSubtasks[currentSubtaskIdx].id, 'running');
+                    }
+                }
+
+                if (d.type === 'action_start') addLog(`EXECUTING: ${d.action_type}`);
+
+                if (d.type === 'action_result') {
+                    const status = d.ok ? 'ok' : 'fail';
+                    const truncated = (d.output || '').slice(0, 80);
+                    addLog(`${d.action_id?.slice(0,6) || '?'} [${status}] ${truncated}`);
+                }
+
+                if (d.type === 'screenshot') $('screen').src = `data:image/png;base64,${d.data}`;
+
+                if (d.type === 'reflection' && d.success === false) {
+                    const w = document.createElement('div');
+                    w.className = 'warn-bubble chat-bubble';
+                    w.textContent = `⚠ Sub-task failed: ${d.reason || 'unknown reason'}`;
+                    $('messages').appendChild(w);
+                    w.scrollIntoView({behavior:'smooth'});
+                    // Mark current subtask as failed then advance
+                    if (planSubtasks[currentSubtaskIdx]) {
+                        markSubtask(planSubtasks[currentSubtaskIdx].id, 'pending');
+                    }
+                } else if (d.type === 'reflection' && d.success === true) {
+                    if (planSubtasks[currentSubtaskIdx]) {
+                        markSubtask(planSubtasks[currentSubtaskIdx].id, 'done');
+                        currentSubtaskIdx++;
+                    }
+                }
+
+                if (d.type === 'approval_required') {
+                    $('app-code').innerText = `${d.action?.type}: ${JSON.stringify(d.action?.args)}`;
+                    $('approval').classList.remove('hidden');
+                    window.tid = task;
+                    window.aid = d.action_id;
+                }
+
+                if (d.type === 'error') {
+                    const errBubble = document.createElement('div');
+                    errBubble.className = 'error-bubble chat-bubble';
+                    errBubble.textContent = `Error: ${d.message}`;
+                    $('messages').appendChild(errBubble);
+                    errBubble.scrollIntoView({behavior:'smooth'});
+                    $('status-pill').innerText = 'Error';
+                    $('status-pill').className = 'text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-red-100 text-red-600';
+                    s.close();
+                }
+
+                if (d.type === 'done') {
+                    // Mark last subtask done
+                    if (planSubtasks[currentSubtaskIdx]) markSubtask(planSubtasks[currentSubtaskIdx].id, 'done');
+                    $('status-pill').innerText = 'Complete';
+                    $('status-pill').className = 'text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-green-100 text-green-600';
+                    addLog('Task complete.');
+                    s.close();
+                }
+
+                if (d.type === 'cancelled') {
+                    $('status-pill').innerText = 'Cancelled';
+                    $('status-pill').className = 'text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-gray-100 text-gray-400';
+                    s.close();
+                }
             };
         };
 
-        const sendApp = a => { api('/api/approvals', 'POST', {action_id:window.aid, approve:a}); $('approval').classList.add('hidden'); };
+        const sendApp = a => {
+            api('/api/approvals', 'POST', {task_id: window.tid, action_id: window.aid, approve: a});
+            $('approval').classList.add('hidden');
+        };
+
         $('send').onclick = start;
         $('input').onkeydown = e => { if(e.key==='Enter' && !e.shiftKey) { e.preventDefault(); start(); } };
     </script>
