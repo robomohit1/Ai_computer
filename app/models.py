@@ -61,6 +61,8 @@ class Action(BaseModel):
 class ToolResult(BaseModel):
     ok: bool
     output: str
+    base64_image: Optional[str] = None  # fix: carry screenshot data from tools
+    data: Optional[Dict[str, Any]] = None  # fix: carry structured data (e.g. cursor pos)
 
 
 class ToolError(Exception):

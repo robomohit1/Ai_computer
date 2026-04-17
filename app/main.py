@@ -28,6 +28,7 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Security(bear
 
 service = AgentService(Path("workspace"), log_emitter=log_emitter)
 
+
 class TaskIn(BaseModel):
     task_id: str
     goal: str
@@ -35,27 +36,48 @@ class TaskIn(BaseModel):
     screen_width: int = 1280
     screen_height: int = 800
 
+
 class ApprovalIn(BaseModel):
+    task_id: str
     action_id: str
     approve: bool
+
 
 @app.get("/")
 async def root(): return FileResponse("static/index.html")
 
+
 @app.get("/api/health")
 async def health(): return {"status": "ok"}
+
 
 @app.get("/api/models")
 async def get_models():
     return {"models": ["claude-3-5-sonnet-20241022", "claude-3-opus-20240229", "gpt-4o", "gemini-1.5-pro"]}
 
+
 @app.post("/api/tasks", dependencies=[Depends(verify_token)])
 async def create_task(body: TaskIn):
-    if body.model: service.planner.model = body.model
-    record = service.init_task(body.task_id, body.goal, body.screen_width, body.screen_height)
+    # init_task schedules run_task internally — do NOT call run_task again here
+    record = service.init_task(
+        task_id=body.task_id,
+        goal=body.goal,
+        screen_width=body.screen_width,
+        screen_height=body.screen_height,
+        model=body.model or "claude-3-5-sonnet-20241022",
+    )
     _tasks[body.task_id] = record
-    asyncio.create_task(service.run_task(record))
     return {"task_id": body.task_id, "status": "running"}
+
+
+@app.get("/api/tasks/{task_id}")
+async def get_task(task_id: str, credentials: HTTPAuthorizationCredentials = Security(bearer)):
+    await verify_token(credentials)
+    record = _tasks.get(task_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return record
+
 
 @app.get("/api/tasks/{task_id}/stream")
 async def stream_task(task_id: str, request: Request, token: Optional[str] = None):
@@ -64,24 +86,28 @@ async def stream_task(task_id: str, request: Request, token: Optional[str] = Non
         auth = request.headers.get("Authorization", "")
         if not auth.startswith("Bearer ") or auth[7:] != API_KEY:
             raise HTTPException(status_code=401)
+
     async def event_generator():
         q = log_emitter.subscribe(task_id)
         try:
             while True:
-                if await request.is_disconnected(): break
+                if await request.is_disconnected():
+                    break
                 try:
                     msg = await asyncio.wait_for(q.get(), timeout=30.0)
-                    yield f"data: {json.dumps(msg)}
+                    yield f"data: {json.dumps(msg)}\n\n"
+                    if msg.get("type") in ("done", "error"):
+                        break
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+        finally:
+            log_emitter.unsubscribe(task_id, q)
 
-"
-                    if msg.get("type") in ("done", "error"): break
-                except asyncio.TimeoutError: yield ": keepalive
-
-"
-        finally: log_emitter.unsubscribe(task_id, q)
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
 
 @app.post("/api/approvals", dependencies=[Depends(verify_token)])
 async def approvals(body: ApprovalIn):
-    service.submit_approval(body.action_id, body.approve)
+    # fix: pass task_id so submit_approval can resolve the correct future
+    service.submit_approval(body.task_id, body.action_id, body.approve)
     return {"ok": True}
