@@ -31,26 +31,34 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Security(bear
 service = AgentService(Path("workspace"), log_emitter=log_emitter)
 
 
+from pydantic import BaseModel, Field
+
 class TaskIn(BaseModel):
     task_id: str
-    goal: str
+    goal: str = Field(..., min_length=5, max_length=2000)
     model: Optional[str] = "claude-3-5-sonnet-20241022"
     screen_width: int = 1280
     screen_height: int = 800
 
+@app.middleware("http")
+async def limit_request_size(request: Request, call_next):
+    if request.method == "POST":
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > 10240:
+            return StreamingResponse(
+                iter([b'{"detail":"Payload too large"}']), status_code=413, media_type="application/json"
+            )
+    return await call_next(request)
 
 class ApprovalIn(BaseModel):
     task_id: str
     action_id: str
     approve: bool
 
-
 @app.get("/")
 async def root(): return FileResponse("static/index.html")
 
-
 import time
-
 START_TIME = time.time()
 
 @app.get("/api/health")
@@ -63,23 +71,17 @@ async def health():
 
 @app.get("/api/models")
 async def get_models():
-    # Only return models if API keys are set
     models = []
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        models.extend(["claude-3-5-sonnet-20241022", "claude-3-opus-20240229"])
-    if os.environ.get("OPENAI_API_KEY"):
-        models.append("gpt-4o")
-    if os.environ.get("GOOGLE_API_KEY"):
-        models.extend(["gemini-2.5-flash", "gemini-2.0-flash"])
-    if os.environ.get("GROQ_API_KEY"):
-        models.extend(["groq/llama-3.3-70b-versatile", "groq/llama-3.2-90b-vision-preview"])
-    if os.environ.get("OPENROUTER_API_KEY"):
-        models.extend([
-            "openrouter/anthropic/claude-3.5-sonnet",
-            "openrouter/google/gemini-2.0-flash-lite-preview-02-05:free",
-            "openrouter/meta-llama/llama-3.2-90b-vision-instruct:free",
-            "openrouter/qwen/qwen-2-vl-72b-instruct:free"
-        ])
+    if os.environ.get("ANTHROPIC_API_KEY"): models.extend(["claude-3-5-sonnet-20241022", "claude-3-opus-20240229"])
+    if os.environ.get("OPENAI_API_KEY"): models.append("gpt-4o")
+    if os.environ.get("GOOGLE_API_KEY"): models.extend(["gemini-2.5-flash", "gemini-2.0-flash"])
+    if os.environ.get("GROQ_API_KEY"): models.extend(["groq/llama-3.3-70b-versatile", "groq/llama-3.2-90b-vision-preview"])
+    if os.environ.get("OPENROUTER_API_KEY"): models.extend([
+        "openrouter/anthropic/claude-3.5-sonnet",
+        "openrouter/google/gemini-2.0-flash-lite-preview-02-05:free",
+        "openrouter/meta-llama/llama-3.2-90b-vision-instruct:free",
+        "openrouter/qwen/qwen-2-vl-72b-instruct:free"
+    ])
     return {"models": models}
 
 @app.get("/api/tasks", dependencies=[Depends(verify_token)])
@@ -94,9 +96,12 @@ async def get_all_tasks():
         })
     return {"tasks": res}
 
-
 @app.post("/api/tasks", dependencies=[Depends(verify_token)])
 async def create_task(body: TaskIn):
+    active = sum(1 for t in _tasks.values() if t.status == "running")
+    if active >= 5:
+        raise HTTPException(status_code=429, detail="max concurrent tasks reached")
+    
     record = service.init_task(
         task_id=body.task_id,
         goal=body.goal,

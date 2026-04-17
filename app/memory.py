@@ -83,7 +83,9 @@ class MemoryStore:
         return self._counter
 
     def add_action_result(self, task_id: str, action_id: str, result: str) -> int:
-        return self.add("action_result", result, {"task_id": task_id, "action_id": action_id})
+        idx = self.add("action_result", result, {"task_id": task_id, "action_id": action_id})
+        self.enforce_sliding_window(task_id)
+        return idx
 
     def search(self, prompt: str, limit: int = 5) -> List[MemoryItem]:
         if self.collection.count() == 0:
@@ -131,3 +133,35 @@ class MemoryStore:
                 )
             )
         return list(reversed(items))
+
+    def enforce_sliding_window(self, task_id: str):
+        total = self.collection.count()
+        if total == 0:
+            return
+        all_results = self.collection.get(limit=total, offset=0)
+        docs = []
+        metas = []
+        ids = []
+        for i, m in enumerate(all_results["metadatas"]):
+            if m.get("task_id") == task_id:
+                docs.append(all_results["documents"][i])
+                metas.append(m)
+                ids.append(all_results["ids"][i])
+        
+        char_count = sum(len(d) for d in docs)
+        if char_count / 4.0 > 4000:
+            half = len(docs) // 2
+            oldest_docs = docs[:half]
+            oldest_ids = ids[:half]
+            
+            summary_text = f"Summary of {len(oldest_docs)} previous actions: " + " ".join(oldest_docs)
+            if len(summary_text) > 4000:
+                summary_text = summary_text[:4000] + "..."
+            
+            try:
+                self.collection.delete(ids=oldest_ids)
+            except AttributeError:
+                # _FallbackCollection doesn't support delete easily
+                pass
+            
+            self.add("summary", summary_text, {"task_id": task_id})
