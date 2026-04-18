@@ -8,6 +8,10 @@
 - **Coding-First Mode**: High-speed, text-only mode optimized for software engineering.
 - **Environment Discovery**: Added `system_info` and `list_directory` tools for dynamic OS/path detection.
 - **Enhanced Chat**: Streaming status bubbles and action mini-cards for better feedback.
+- **Experimental Vision**:
+    - `find_on_screen`: Locates specific images on the display via template matching.
+    - `ocr_image`: Full-screen text extraction using Tesseract OCR (requires Tesseract binaries).
+    - Integrated scaling logic to ensure accuracy across different screen resolutions.
 
 ### Fixed
 - **Newline Reliability**: Automatic normalization of literal `\n` characters in file write actions to prevent syntax errors.

@@ -34,6 +34,11 @@ AI Computer is a high-performance, open-source alternative to proprietary comput
 - **Manual Approval Flow**: High-risk actions pause execution and wait for user confirmation via the UI.
 - **Isolated Workspace**: Enforces standard operating boundaries while allowing home-directory access for specific user tasks.
 
+### 🔍 Computer Vision (WIP)
+- **Image Recognition**: Experimental `find_on_screen` tool using template matching to locate UI elements by image.
+- **Optical Character Recognition (OCR)**: Integrated `pytesseract` support for extracting text from the screen to aid navigation.
+- **Visual Feedback**: Real-time screenshot previews in the dashboard, allowing you to monitor the agent's work in "Computer Mode".
+
 ---
 
 ## 🚀 Quick Start
