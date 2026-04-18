@@ -193,7 +193,13 @@ class AgentService:
 
                     log_entry = f"Action: {action.type.value} -> {res.output}"
                     history.append(log_entry)
-                    await self._emit(task_id, "action_result", {"action_id": action.id, "ok": res.ok, "output": res.output})
+                    await self._emit(task_id, "action_result", {
+                        "action_id": action.id,
+                        "ok": res.ok,
+                        "output": res.output,
+                        "action_type": action.type.value,
+                        "args_summary": _summarize_args(action.type.value, action.args),
+                    })
 
                     # In coding mode, emit file content changes instead of screenshots
                     if is_coding:

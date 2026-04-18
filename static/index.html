@@ -392,6 +392,62 @@
     max-width: 90%;
     font-style: italic;
   }
+  /* Streaming status bubble — compact, progress-like */
+  .status-bubble {
+    align-self: flex-start;
+    background: transparent;
+    border: none;
+    color: var(--text-2);
+    font-size: 12px;
+    padding: 4px 0;
+    opacity: 0.7;
+    max-width: 90%;
+  }
+  .status-bubble.thinking {
+    color: var(--accent);
+    opacity: 1;
+    font-weight: 500;
+  }
+  /* Action result mini-card in main chat */
+  .action-bubble {
+    align-self: flex-start;
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    color: var(--text-1);
+    max-width: 90%;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+  }
+  .action-bubble .action-label {
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 3px;
+  }
+  .action-bubble .action-output {
+    color: var(--text-2);
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+  .action-bubble.ok { border-left: 3px solid var(--ok); }
+  .action-bubble.fail { border-left: 3px solid var(--err); }
+  /* Pulsing dots for thinking state */
+  @keyframes pulse-dot {
+    0%, 80%, 100% { opacity: 0.3; }
+    40% { opacity: 1; }
+  }
+  .thinking-dots span {
+    animation: pulse-dot 1.4s infinite;
+    display: inline-block;
+  }
+  .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
 
   /* Plan block */
   .plan-card {
@@ -1460,6 +1516,42 @@
         return d;
     };
 
+    // Streaming status line in main chat (replaces previous status)
+    let _lastStatusEl = null;
+    const chatStatus = (text, isThinking = false) => {
+        removeEmptyState();
+        // Remove previous status line to avoid clutter
+        if (_lastStatusEl && _lastStatusEl.parentNode) _lastStatusEl.remove();
+        const el = document.createElement('div');
+        el.className = 'status-bubble bubble' + (isThinking ? ' thinking' : '');
+        if (isThinking) {
+            el.innerHTML = `${text} <span class="thinking-dots"><span>.</span><span>.</span><span>.</span></span>`;
+        } else {
+            el.innerText = text;
+        }
+        $('messages').appendChild(el);
+        _lastStatusEl = el;
+        scrollMessages();
+        return el;
+    };
+
+    // Action result mini-card in main chat
+    const chatAction = (type, summary, output, ok) => {
+        removeEmptyState();
+        // Clear thinking status when action result arrives
+        if (_lastStatusEl && _lastStatusEl.parentNode) _lastStatusEl.remove();
+        _lastStatusEl = null;
+        const el = document.createElement('div');
+        el.className = `action-bubble ${ok ? 'ok' : 'fail'}`;
+        const truncOutput = (output || '').slice(0, 200);
+        el.innerHTML = `<div class="action-label">${type || 'action'} — ${ok ? '✓' : '✕'}</div>`
+            + (summary ? `<div>${summary}</div>` : '')
+            + (truncOutput ? `<div class="action-output">${truncOutput}</div>` : '');
+        $('messages').appendChild(el);
+        scrollMessages();
+        return el;
+    };
+
     const scrollMessages = () => {
         const s = $('messages-scroll');
         s.scrollTop = s.scrollHeight;
@@ -1689,14 +1781,17 @@
                 if (runningMatch && planSubtasks[currentSubtaskIdx]) {
                     if (currentSubtaskIdx > 0 && subtaskEls[planSubtasks[currentSubtaskIdx-1].id] && subtaskEls[planSubtasks[currentSubtaskIdx-1].id].classList.contains('subtask-running')) {
                         markSubtask(planSubtasks[currentSubtaskIdx-1].id, 'done');
-
                     }
                     markSubtask(planSubtasks[currentSubtaskIdx].id, 'running');
                 }
+                // Stream status into main chat
+                const isThinking = /thinking|planning|evaluating/i.test(d.message);
+                chatStatus(d.message, isThinking);
             }
 
             if (d.type === 'action_start') {
                 logAction(d.action_type, 'EXEC', d.args_summary || '', 'info');
+                chatStatus(`▸ ${d.action_type}: ${d.args_summary || ''}`);
             }
 
             if (d.type === 'action_result') {
@@ -1704,6 +1799,8 @@
                 $('stat-actions').innerText = stats.actions;
                 const truncated = (d.output || '').slice(0, 80).replace(/\n/g, ' ');
                 logAction(null, d.ok ? 'OK  ' : 'FAIL', truncated, d.ok ? 'ok' : 'fail');
+                // Show action result in main chat as mini-card
+                chatAction(d.action_type || '', d.args_summary || '', d.output, d.ok);
             }
 
             if (d.type === 'mode') {
