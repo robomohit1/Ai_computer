@@ -31,10 +31,14 @@ class ToolExecutor:
         pyautogui.FAILSAFE = False
 
     def _safe_path(self, value: str) -> Path:
+        """Resolve a path, allowing workspace-relative or user-home-absolute paths."""
         candidate = (self.workspace / value).resolve() if not Path(value).is_absolute() else Path(value).resolve()
-        if self.workspace not in candidate.parents and candidate != self.workspace:
-            raise ToolError("Path escapes workspace")
-        return candidate
+        # Allow paths inside workspace OR inside user's home directory
+        home = Path.home().resolve()
+        if (self.workspace in candidate.parents or candidate == self.workspace
+                or home in candidate.parents or candidate == home):
+            return candidate
+        raise ToolError(f"Path escapes allowed directories (workspace or home): {value}")
 
     def _scale(self, x: int, y: int, sw: int, sh: int):
         import pyautogui
@@ -152,8 +156,10 @@ class ToolExecutor:
 
     def run_command(self, command: str):
         try:
-            res = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=60, cwd=self.workspace)
+            res = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=120, cwd=self.workspace)
             return ToolResult(ok=res.returncode == 0, output=f"STDOUT:\n{res.stdout}\nSTDERR:\n{res.stderr}")
+        except subprocess.TimeoutExpired:
+            return ToolResult(ok=False, output="Command timed out after 120 seconds.")
         except Exception as e:
             return ToolResult(ok=False, output=str(e))
 
