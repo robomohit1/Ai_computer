@@ -51,8 +51,10 @@ class AgentService:
         self._pause_events: Dict[str, asyncio.Event] = {}
         self._on_task_complete: Optional[Callable[[str, str, str], None]] = None
 
-    def _emit(self, task_id: str, event: str, data: Dict[str, Any]):
+    async def _emit(self, task_id: str, event: str, data: Dict[str, Any]):
+        """Emit an SSE event and yield control so the event loop can flush it to clients."""
         self.log_emitter.emit(task_id, event, data)
+        await asyncio.sleep(0)  # yield to event loop — lets SSE generator send this event immediately
 
     def init_task(
         self,
@@ -86,8 +88,14 @@ class AgentService:
     ):
         provider = PlannerProvider(model=model)
         is_coding = mode == "coding"
-        self._emit(task_id, "status", {"message": f"Initializing planning... (mode: {mode})"})
-        self._emit(task_id, "mode", {"mode": mode})
+
+        # Brief delay so the SSE EventSource in the browser has time to connect
+        # before we start emitting events (prevents the race where events fire
+        # before the frontend subscription is established)
+        await asyncio.sleep(0.3)
+
+        await self._emit(task_id, "status", {"message": f"Initializing planning... (mode: {mode})"})
+        await self._emit(task_id, "mode", {"mode": mode})
         try:
             context_memories = self.memory.search(goal, limit=5)
             memory_context: Optional[str] = None
@@ -96,8 +104,17 @@ class AgentService:
 
             # In coding mode, skip screenshot capture entirely
             screenshot_b64 = None if is_coding else _capture_screenshot_b64(screen_width, screen_height)
-            plan = provider.plan_hierarchical(goal, memory_context=memory_context, latest_screenshot_b64=screenshot_b64, mode=mode)
-            self._emit(task_id, "plan", plan.model_dump())
+
+            # Run the sync LLM call in a thread so the event loop stays free for SSE streaming
+            await self._emit(task_id, "status", {"message": "Thinking..."})
+            plan = await asyncio.to_thread(
+                provider.plan_hierarchical,
+                goal,
+                screenshot_b64,
+                memory_context,
+                mode,
+            )
+            await self._emit(task_id, "plan", plan.model_dump())
 
             history: List[str] = []
             action_count = 0
@@ -105,15 +122,15 @@ class AgentService:
 
             while plan.sub_tasks:
                 sub_task = plan.sub_tasks.pop(0)
-                self._emit(task_id, "status", {"message": f"Executing sub-task: {sub_task.description}"})
+                await self._emit(task_id, "status", {"message": f"Executing sub-task: {sub_task.description}"})
 
                 results: List[str] = []
                 actions_taken: List[Dict[str, Any]] = []
 
                 for action_data in sub_task.actions:
                     if action_count >= 50:
-                        self._emit(task_id, "error", {"message": "Hard limit of 50 actions reached."})
-                        self._emit(task_id, "done", {"complete": False, "reason": "Hard limit of 50 actions reached."})
+                        await self._emit(task_id, "error", {"message": "Hard limit of 50 actions reached."})
+                        await self._emit(task_id, "done", {"complete": False, "reason": "Hard limit of 50 actions reached."})
                         return
                         
                     while task_id in self._paused_tasks:
@@ -124,7 +141,7 @@ class AgentService:
                     action = Action(**action_data.model_dump())
                     decision = self.safety.evaluate(action, safe_mode=not is_coding)
 
-                    self._emit(task_id, "action_start", {
+                    await self._emit(task_id, "action_start", {
                         "action_id": action.id,
                         "action_type": action.type.value,
                         "explanation": action.explanation,
@@ -132,7 +149,7 @@ class AgentService:
                     })
 
                     if action.requires_approval or decision.requires_approval:
-                        self._emit(task_id, "approval_required", {
+                        await self._emit(task_id, "approval_required", {
                             "action_id": action.id,
                             "action": action.model_dump(),
                             "danger": decision.danger.value,
@@ -141,7 +158,7 @@ class AgentService:
                         })
                         approved = await self._wait_for_approval(task_id, action.id)
                         if not approved:
-                            self._emit(task_id, "status", {"message": f"Action {action.id} rejected. Stopping."})
+                            await self._emit(task_id, "status", {"message": f"Action {action.id} rejected. Stopping."})
                             self._finalize(task_id, "cancelled", "user rejected action")
 
                             return
@@ -165,19 +182,19 @@ class AgentService:
 
                     log_entry = f"Action: {action.type.value} -> {res.output}"
                     history.append(log_entry)
-                    self._emit(task_id, "action_result", {"action_id": action.id, "ok": res.ok, "output": res.output})
+                    await self._emit(task_id, "action_result", {"action_id": action.id, "ok": res.ok, "output": res.output})
 
                     # In coding mode, emit file content changes instead of screenshots
                     if is_coding:
                         if action.type.value in ("write_file", "text_create", "text_str_replace", "text_insert"):
                             file_path = action.args.get("path", "")
-                            self._emit(task_id, "file_change", {
+                            await self._emit(task_id, "file_change", {
                                 "path": file_path,
                                 "action": action.type.value,
                                 "content": action.args.get("content", action.args.get("file_text", "")),
                             })
                         elif action.type.value == "run_command":
-                            self._emit(task_id, "terminal_output", {
+                            await self._emit(task_id, "terminal_output", {
                                 "command": action.args.get("command", ""),
                                 "output": res.output,
                                 "ok": res.ok,
@@ -185,19 +202,20 @@ class AgentService:
                     else:
                         if action.type in _SCREENSHOT_ACTIONS or action.type == ActionType.screenshot:
                             screenshot = res.base64_image or _capture_screenshot_b64(screen_width, screen_height)
-                            self._emit(task_id, "screenshot", {"data": screenshot})
+                            await self._emit(task_id, "screenshot", {"data": screenshot})
 
-                # Reflection
-                self._emit(task_id, "status", {"message": "Reflecting on progress..."})
+                # Reflection — run sync LLM in thread
+                await self._emit(task_id, "status", {"message": "Reflecting on progress..."})
                 reflect_screenshot = None if is_coding else _capture_screenshot_b64(screen_width, screen_height)
-                reflection = provider.reflect_on_subtask(
+                reflection = await asyncio.to_thread(
+                    provider.reflect_on_subtask,
                     sub_task.description,
                     actions_taken,
                     results,
                     reflect_screenshot,
-                    mode=mode,
+                    mode,
                 )
-                self._emit(task_id, "reflection", reflection)
+                await self._emit(task_id, "reflection", reflection)
 
                 if not reflection.get("success", True):
                     consecutive_fails += 1
@@ -213,7 +231,7 @@ class AgentService:
                             retry_res = await asyncio.wait_for(self.tools.run_action(retry_action, sw=screen_width, sh=screen_height), timeout=timeout)
                             self.memory.add_action_result(task_id, retry_action.id, retry_res.output)
                             history.append(f"Retry: {retry_action.type.value} -> {retry_res.output}")
-                            self._emit(
+                            await self._emit(
                                 task_id,
                                 "action_result",
                                 {"action_id": retry_action.id, "ok": retry_res.ok, "output": retry_res.output},
@@ -221,28 +239,37 @@ class AgentService:
                         except Exception as e:
                             history.append(f"Retry failed: {str(e)}")
                             
-                    self._emit(
+                    await self._emit(
                         task_id,
                         "status",
                         {"message": f"Sub-task failed: {reflection.get('reason')}"},
                     )
                     
                     if consecutive_fails > 2:
-                        self._emit(task_id, "status", {"message": "Multiple failures detected. Re-planning..."})
+                        await self._emit(task_id, "status", {"message": "Multiple failures detected. Re-planning..."})
                         replan_screenshot = None if is_coding else _capture_screenshot_b64(screen_width, screen_height)
-                        plan = provider.plan_hierarchical(goal + f" (Re-planning after failures. History: {history[-5:]})", memory_context, latest_screenshot_b64=replan_screenshot, mode=mode)
-                        self._emit(task_id, "plan", plan.model_dump())
+                        plan = await asyncio.to_thread(
+                            provider.plan_hierarchical,
+                            goal + f" (Re-planning after failures. History: {history[-5:]})",
+                            replan_screenshot,
+                            memory_context,
+                            mode,
+                        )
+                        await self._emit(task_id, "plan", plan.model_dump())
                         consecutive_fails = 0
                 else:
                     consecutive_fails = 0
 
-            # Final Evaluation
+            # Final Evaluation — run sync LLM in thread
+            await self._emit(task_id, "status", {"message": "Evaluating results..."})
             eval_screenshot = None if is_coding else _capture_screenshot_b64(screen_width, screen_height)
-            eval_res = provider.evaluate(goal, history, eval_screenshot, mode=mode)
+            eval_res = await asyncio.to_thread(
+                provider.evaluate, goal, history, eval_screenshot, mode
+            )
             status = "done" if eval_res.get("complete") else "failed"
             self._finalize(task_id, status, eval_res.get("reason", ""))
 
-            self._emit(task_id, "done", eval_res)
+            await self._emit(task_id, "done", eval_res)
             
             # Store goal outcome in memory
             self.memory.add("task_outcome", f"Goal: {goal} | Outcome: {eval_res.get('complete')} | Reason: {eval_res.get('reason')}")
@@ -253,12 +280,12 @@ class AgentService:
 
         except asyncio.CancelledError:
             self._finalize(task_id, "cancelled", "task cancelled")
-            self._emit(task_id, "cancelled", {"message": "Task cancelled"})
+            await self._emit(task_id, "cancelled", {"message": "Task cancelled"})
 
         except Exception as e:
             self._finalize(task_id, "failed", str(e))
-            self._emit(task_id, "error", {"message": str(e)})
-            self._emit(task_id, "done", {"complete": False, "reason": f"Crashed: {str(e)}"})
+            await self._emit(task_id, "error", {"message": str(e)})
+            await self._emit(task_id, "done", {"complete": False, "reason": f"Crashed: {str(e)}"})
 
     def _finalize(self, task_id: str, status: str, reason: str = ""):
         if self._on_task_complete:
@@ -304,7 +331,7 @@ def _summarize_args(action_type: str, args: dict) -> str:
     if action_type in ("browser_click", "browser_type"):
         return args.get("selector") or ""
     if action_type == "api_call":
-        return f"{args.get('method','GET')} {args.get('url','')}"[:80]
+        return f"{args.get('method','GET')} {args.get('url','')})"[:80]
     if action_type in ("mouse_click", "mouse_move", "double_click", "right_click"):
         return f"({args.get('x')}, {args.get('y')})"
     if action_type in ("keyboard_type", "type_with_delay"):
