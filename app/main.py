@@ -213,6 +213,25 @@ async def stream_task(task_id: str, request: Request, token: Optional[str] = Non
             return StreamingResponse(_bad_auth(), media_type="text/event-stream", status_code=401)
 
     async def event_generator():
+        # Replay persisted events first so fast-completing tasks aren't missed
+        log_path = Path(f"workspace/logs/{task_id}.jsonl")
+        terminal_seen = False
+        if log_path.exists():
+            with open(log_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    yield f"data: {line}\n\n"
+                    try:
+                        ev = json.loads(line)
+                        if ev.get("type") in ("done", "error", "cancelled"):
+                            terminal_seen = True
+                    except Exception:
+                        pass
+        if terminal_seen:
+            return
+
         q = log_emitter.subscribe(task_id)
         try:
             while True:

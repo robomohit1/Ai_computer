@@ -1207,11 +1207,15 @@
     // empty-state removal, history items, log rows, subtask icons).
     // ============================================================
 
-    let KEY = sessionStorage.getItem("key");
-    if (!KEY) {
-        KEY = prompt("API Key:");
-        if (KEY) sessionStorage.setItem("key", KEY);
-    }
+    const getKey = () => {
+        let k = sessionStorage.getItem("key");
+        if (!k) {
+            k = prompt("API Key:");
+            if (k) sessionStorage.setItem("key", k);
+        }
+        return k || "";
+    };
+    let KEY = getKey();
 
     const $ = id => document.getElementById(id);
     let task = null;
@@ -1225,7 +1229,7 @@
 
     const api = (p, m='GET', b=null) => fetch(p, {
         method: m,
-        headers: {'Authorization':`Bearer ${KEY}`, 'Content-Type':'application/json'},
+        headers: {'Authorization':`Bearer ${getKey()}`, 'Content-Type':'application/json'},
         body: b ? JSON.stringify(b) : null
     }).then(r => r.ok ? r.json() : Promise.reject(r));
 
@@ -1276,6 +1280,22 @@
         $('task-history').appendChild(histItem);
         historyItems.push(histItem);
         bindHistoryItem(histItem, t.id);
+    };
+
+    const bindHistoryItem = (el, taskId) => {
+        if (!taskId) return;
+        el.dataset.tid = taskId;
+        el.style.cursor = 'pointer';
+        el.addEventListener('click', async () => {
+            if (task === taskId) return;
+            if (task && sse) return toast('Cancel the running task first', 'warn');
+            try {
+                const r = await api(`/api/tasks/${taskId}/log`);
+                loadTaskLog(taskId, r.log || [], el);
+            } catch (e) {
+                toast('Could not load task log', 'err');
+            }
+        });
     };
 
     const addActiveHistoryItem = (goal) => {
@@ -1460,7 +1480,7 @@
     };
 
     const cancelTask = async () => {
-        await api(`/api/tasks/${task}`, 'DELETE');
+        try { await api(`/api/tasks/${task}`, 'DELETE'); } catch (_) {}
         setStatus('cancelled');
         msg("Task cancelled by user.", "cancel");
         logMsg('Task cancelled', 'warn');
@@ -1487,8 +1507,11 @@
 
 
     const listen = () => {
-        sse = new EventSource(`/api/tasks/${task}/stream?token=${KEY}`);
+        if (sse) { sse.close(); sse = null; }
+        sse = new EventSource(`/api/tasks/${task}/stream?token=${getKey()}`);
+        const listenTask = task;
         sse.onmessage = e => {
+            if (task !== listenTask) return; // stale handler — new task started
             const d = JSON.parse(e.data);
 
             if (d.type === 'plan') {
@@ -1594,8 +1617,27 @@
         };
 
         sse.onerror = () => {
-            logMsg("Lost connection to stream", "fail");
-            stopEverything();
+            // Poll task status to catch completion that happened before SSE connected
+            if (task) {
+                api(`/api/tasks/${task}`).then(rec => {
+                    if (rec.status && rec.status !== 'running') {
+                        const done = rec.status === 'done' || rec.status === 'complete';
+                        const failed = rec.status === 'failed';
+                        const cancelled = rec.status === 'cancelled';
+                        if (done) { setStatus('complete'); msg('Task completed successfully.', 'success'); }
+                        else if (failed) { setStatus('failed'); msg(`Task failed: ${rec.reason || ''}`, 'error'); }
+                        else if (cancelled) { setStatus('cancelled'); msg('Task was cancelled.', 'cancel'); }
+                        markHistoryFinal(rec.status);
+                        stopEverything();
+                    } else {
+                        logMsg("Lost connection to stream", "fail");
+                        stopEverything();
+                    }
+                }).catch(() => { logMsg("Lost connection to stream", "fail"); stopEverything(); });
+            } else {
+                logMsg("Lost connection to stream", "fail");
+                stopEverything();
+            }
         };
     };
 
@@ -1962,21 +2004,6 @@
     // ============================================================
     //  HISTORY CLICK → load past task log
     // ============================================================
-    const bindHistoryItem = (el, taskId) => {
-        if (!taskId) return;
-        el.dataset.tid = taskId;
-        el.style.cursor = 'pointer';
-        el.addEventListener('click', async () => {
-            if (task === taskId) return;
-            if (task && sse) return toast('Cancel the running task first', 'warn');
-            try {
-                const r = await api(`/api/tasks/${taskId}/log`);
-                loadTaskLog(taskId, r.log || [], el);
-            } catch (e) {
-                toast('Could not load task log', 'err');
-            }
-        });
-    };
     const loadTaskLog = (taskId, events, sourceEl) => {
         // Reset UI
         $('messages').innerHTML = '';

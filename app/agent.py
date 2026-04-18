@@ -50,7 +50,6 @@ class AgentService:
         self._approvals: Dict[str, asyncio.Future] = {}
         self._pause_events: Dict[str, asyncio.Event] = {}
         self._on_task_complete: Optional[Callable[[str, str, str], None]] = None
-        self.plugin_registry.load_defaults()
 
     def _emit(self, task_id: str, event: str, data: Dict[str, Any]):
         self.log_emitter.emit(task_id, event, data)
