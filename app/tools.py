@@ -168,9 +168,11 @@ class ToolExecutor:
         return ToolResult(ok=True, output=p.read_text())
 
     def write_file(self, path: str, content: str):
+        # LLMs often over-escape newlines in JSON strings as literal \n
+        content = content.replace("\\n", "\n").replace("\\t", "\t")
         p = self._safe_path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(content)
+        p.write_text(content, encoding="utf-8")
         return ToolResult(ok=True, output=f"Wrote to {path}")
 
     def move_file(self, source: str, destination: str):

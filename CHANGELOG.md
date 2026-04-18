@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.0] - Real-Time Streaming & Discovery Update
+
+### Added
+- **Streaming Overhaul**: Low-latency SSE streaming implemented for both the activity log and the main chat panel.
+- **Thinking Indicators**: Visual pulsing dots (●●●) in the UI during agent reasoning phases.
+- **Coding-First Mode**: High-speed, text-only mode optimized for software engineering.
+- **Environment Discovery**: Added `system_info` and `list_directory` tools for dynamic OS/path detection.
+- **Enhanced Chat**: Streaming status bubbles and action mini-cards for better feedback.
+
+### Fixed
+- **Newline Reliability**: Automatic normalization of literal `\n` characters in file write actions to prevent syntax errors.
+- **Cross-Platform Safety**: Standardized `_safe_path` logic for Windows/Unix compatibility.
+
 ## [1.0.0] - Production Ready Release
 
 ### Added
