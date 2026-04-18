@@ -54,6 +54,8 @@ class ActionType(str, Enum):
     get_clipboard = "get_clipboard"
     set_clipboard = "set_clipboard"
     notify = "notify"
+    system_info = "system_info"
+    list_directory = "list_directory"
 
 
 class Action(BaseModel):

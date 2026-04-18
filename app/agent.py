@@ -102,6 +102,17 @@ class AgentService:
             if context_memories:
                 memory_context = "\n".join(f"- {m.content}" for m in context_memories)
 
+            # In coding mode, auto-discover the environment before planning
+            env_context = ""
+            if is_coding:
+                env_result = self.tools.system_info()
+                await self._emit(task_id, "action_result", {
+                    "action_id": "auto-env",
+                    "ok": env_result.ok,
+                    "output": env_result.output,
+                })
+                env_context = f"\n\nSystem environment:\n{env_result.output}\nUse these EXACT paths in your actions — do NOT use template variables or placeholders."
+            
             # In coding mode, skip screenshot capture entirely
             screenshot_b64 = None if is_coding else _capture_screenshot_b64(screen_width, screen_height)
 
@@ -109,7 +120,7 @@ class AgentService:
             await self._emit(task_id, "status", {"message": "Thinking..."})
             plan = await asyncio.to_thread(
                 provider.plan_hierarchical,
-                goal,
+                goal + env_context,
                 screenshot_b64,
                 memory_context,
                 mode,

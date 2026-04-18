@@ -179,6 +179,51 @@ class ToolExecutor:
         shutil.move(str(src), str(dst))
         return ToolResult(ok=True, output=f"Moved {source} to {destination}")
 
+    def system_info(self):
+        """Return OS info, home dir, workspace, and common folder paths."""
+        import platform
+        home = Path.home()
+        info = {
+            "os": platform.system(),
+            "platform": platform.platform(),
+            "home": str(home),
+            "workspace": str(self.workspace),
+            "downloads": str(home / "Downloads"),
+            "desktop": str(home / "Desktop"),
+            "documents": str(home / "Documents"),
+            "cwd": str(Path.cwd()),
+            "user": os.environ.get("USERNAME", os.environ.get("USER", "unknown")),
+            "python": "python" if platform.system() == "Windows" else "python3",
+        }
+        return ToolResult(ok=True, output=json.dumps(info, indent=2))
+
+    def list_directory(self, path: str, max_depth: int = 2):
+        """List directory contents. Accepts absolute or workspace-relative paths."""
+        p = self._safe_path(path)
+        if not p.exists():
+            return ToolResult(ok=False, output=f"Path does not exist: {path}")
+        if not p.is_dir():
+            return ToolResult(ok=False, output=f"Not a directory: {path}")
+        entries = []
+        root_depth = len(p.parts)
+        for item in sorted(p.iterdir()):
+            depth = len(item.parts) - root_depth
+            if depth > max_depth:
+                continue
+            prefix = "📁 " if item.is_dir() else "📄 "
+            size = ""
+            if item.is_file():
+                try:
+                    sz = item.stat().st_size
+                    size = f" ({sz:,} bytes)" if sz < 1_000_000 else f" ({sz/1_000_000:.1f} MB)"
+                except OSError:
+                    pass
+            entries.append(f"{prefix}{item.name}{size}")
+        if not entries:
+            entries = ["(empty directory)"]
+        header = f"Directory: {p}\n{'─' * 40}"
+        return ToolResult(ok=True, output=header + "\n" + "\n".join(entries[:100]))
+
     def api_call(self, method: str, url: str, headers: dict = None, body: dict = None):
         import httpx
         resp = httpx.request(method, url, headers=headers or {}, json=body)
@@ -222,6 +267,8 @@ class ToolExecutor:
             ),
             ActionType.text_undo_edit: lambda a: self.text_editor.undo_edit(a.args["path"]),
             ActionType.finish: lambda a: ToolResult(ok=True, output=a.args.get("reason", "Task marked complete by agent.")),
+            ActionType.system_info: lambda a: self.system_info(),
+            ActionType.list_directory: lambda a: self.list_directory(a.args.get("path", "."), a.args.get("max_depth", 2)),
         }
         if action.type in handlers:
             try:
