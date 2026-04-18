@@ -215,6 +215,7 @@ class ToolExecutor:
                 a.args["path"], a.args["insert_line"], a.args["new_str"]
             ),
             ActionType.text_undo_edit: lambda a: self.text_editor.undo_edit(a.args["path"]),
+            ActionType.finish: lambda a: ToolResult(ok=True, output=a.args.get("reason", "Task marked complete by agent.")),
         }
         if action.type in handlers:
             try:

@@ -122,6 +122,7 @@ class AgentService:
                         "action_id": action.id,
                         "action_type": action.type.value,
                         "explanation": action.explanation,
+                        "args_summary": _summarize_args(action.type.value, action.args),
                     })
 
                     if action.requires_approval or decision.requires_approval:
@@ -261,3 +262,26 @@ class AgentService:
 
     def resume_task(self, task_id: str):
         self._paused_tasks.discard(task_id)
+
+
+def _summarize_args(action_type: str, args: dict) -> str:
+    """One-line summary of action args for the activity log."""
+    if action_type == "run_command":
+        return (args.get("command") or "")[:80]
+    if action_type in ("read_file", "write_file", "move_file", "text_create",
+                       "text_view", "text_str_replace", "text_insert"):
+        return args.get("path") or args.get("src") or ""
+    if action_type == "browser_open":
+        return args.get("url") or ""
+    if action_type in ("browser_click", "browser_type"):
+        return args.get("selector") or ""
+    if action_type == "api_call":
+        return f"{args.get('method','GET')} {args.get('url','')}"[:80]
+    if action_type in ("mouse_click", "mouse_move", "double_click", "right_click"):
+        return f"({args.get('x')}, {args.get('y')})"
+    if action_type in ("keyboard_type", "type_with_delay"):
+        text = args.get("text") or ""
+        return text[:40] + ("..." if len(text) > 40 else "")
+    if action_type == "key_combo":
+        return args.get("keys") or ""
+    return ""

@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(dotenv_path=".env", override=False)
 import asyncio
 import json
 import os
@@ -82,20 +82,39 @@ async def health():
         "uptime_seconds": time.time() - START_TIME
     }
 
+_ALL_MODELS = [
+    "claude-3-5-sonnet-20241022",
+    "claude-3-7-sonnet-20250219",
+    "claude-3-opus-20240229",
+    "claude-3-5-haiku-20241022",
+    "gpt-4o",
+    "gpt-4o-mini",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "groq/llama-3.3-70b-versatile",
+    "openrouter/anthropic/claude-3.5-sonnet",
+    "openrouter/meta-llama/llama-3.2-90b-vision-instruct:free",
+]
+
 @app.get("/api/models")
 async def get_models():
-    models = []
-    if os.environ.get("ANTHROPIC_API_KEY"): models.extend(["claude-3-5-sonnet-20241022", "claude-3-opus-20240229"])
-    if os.environ.get("OPENAI_API_KEY"): models.append("gpt-4o")
-    if os.environ.get("GOOGLE_API_KEY"): models.extend(["gemini-2.5-flash", "gemini-2.0-flash"])
-    if os.environ.get("GROQ_API_KEY"): models.extend(["groq/llama-3.3-70b-versatile", "groq/llama-3.2-90b-vision-preview"])
-    if os.environ.get("OPENROUTER_API_KEY"): models.extend([
-        "openrouter/anthropic/claude-3.5-sonnet",
-        "openrouter/google/gemini-2.0-flash-lite-preview-02-05:free",
-        "openrouter/meta-llama/llama-3.2-90b-vision-instruct:free",
-        "openrouter/qwen/qwen-2-vl-72b-instruct:free"
-    ])
-    return {"models": models}
+    # Return models gated by available API keys; fall back to full list so
+    # the selector is never empty (server will fail gracefully if key is missing).
+    keyed = []
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        keyed.extend(["claude-3-5-sonnet-20241022", "claude-3-7-sonnet-20250219",
+                       "claude-3-opus-20240229", "claude-3-5-haiku-20241022"])
+    if os.environ.get("OPENAI_API_KEY"):
+        keyed.extend(["gpt-4o", "gpt-4o-mini"])
+    if os.environ.get("GOOGLE_API_KEY"):
+        keyed.extend(["gemini-2.5-flash", "gemini-2.0-flash"])
+    if os.environ.get("GROQ_API_KEY"):
+        keyed.extend(["groq/llama-3.3-70b-versatile", "groq/llama-3.2-90b-vision-preview"])
+    if os.environ.get("OPENROUTER_API_KEY"):
+        keyed.extend(["openrouter/anthropic/claude-3.5-sonnet",
+                       "openrouter/meta-llama/llama-3.2-90b-vision-instruct:free",
+                       "openrouter/qwen/qwen-2-vl-72b-instruct:free"])
+    return {"models": keyed if keyed else _ALL_MODELS}
 
 @app.get("/api/tasks", dependencies=[Depends(verify_token)])
 async def get_all_tasks():
