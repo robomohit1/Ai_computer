@@ -571,6 +571,92 @@
     animation: pulse 1.8s infinite;
   }
 
+  /* ============ CODE OUTPUT PANEL (coding mode) ============ */
+  .code-output-panel {
+    background: oklch(0.10 0.004 60);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    flex-shrink: 0;
+    max-height: 280px;
+    display: flex; flex-direction: column;
+  }
+  .code-output-panel .panel-tabs {
+    display: flex; border-bottom: 1px solid var(--border);
+    background: var(--bg-2);
+  }
+  .code-output-panel .panel-tab {
+    padding: 7px 14px;
+    font-size: 11px; font-weight: 600;
+    color: var(--text-3);
+    border: none; background: none;
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.03em;
+    border-bottom: 2px solid transparent;
+    transition: all 120ms ease;
+  }
+  .code-output-panel .panel-tab:hover { color: var(--text-1); }
+  .code-output-panel .panel-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .code-output-scroll {
+    flex: 1; overflow-y: auto;
+    padding: 10px 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1.65;
+    color: var(--text-1);
+  }
+  .file-entry {
+    padding: 6px 0;
+    border-bottom: 1px dashed oklch(0.25 0.005 60);
+  }
+  .file-entry:last-child { border-bottom: none; }
+  .file-entry .file-path {
+    color: var(--accent); font-weight: 600; font-size: 10.5px;
+    margin-bottom: 4px; display: flex; align-items: center; gap: 6px;
+  }
+  .file-entry .file-path svg { width: 12px; height: 12px; flex-shrink: 0; }
+  .file-entry .file-action {
+    font-size: 9px;
+    color: var(--ok); font-weight: 600;
+    padding: 1px 6px;
+    background: var(--ok-dim);
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .file-content-preview {
+    background: oklch(0.08 0 0);
+    border-radius: 5px;
+    padding: 6px 10px;
+    font-size: 10.5px;
+    color: var(--text-2);
+    max-height: 80px;
+    overflow: hidden;
+    white-space: pre;
+    line-height: 1.5;
+  }
+  .terminal-entry {
+    padding: 6px 0;
+    border-bottom: 1px dashed oklch(0.25 0.005 60);
+  }
+  .terminal-entry:last-child { border-bottom: none; }
+  .terminal-cmd {
+    color: var(--ok);
+    font-weight: 600;
+    font-size: 10.5px;
+  }
+  .terminal-cmd::before { content: '$ '; color: var(--text-3); }
+  .terminal-out {
+    color: var(--text-2);
+    font-size: 10px;
+    white-space: pre-wrap;
+    max-height: 60px;
+    overflow: hidden;
+    margin-top: 2px;
+  }
+  .terminal-out.fail { color: var(--err); }
+
   .stats-row {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -1107,13 +1193,12 @@
             <p>Describe a task in plain English. The agent will plan, execute, and check its own work &mdash; pausing to ask you before anything risky.</p>
           </div>
           <div class="example-chips">
-            <button onclick="useExample(this)">Summarize the latest 5 emails in my inbox</button>
-            <button onclick="useExample(this)">Book a flight to SFO next Friday</button>
-            <button onclick="useExample(this)">Research competitors for a note-taking app</button>
+            <button onclick="useExample(this)">Create a Python FastAPI server with CRUD endpoints</button>
+            <button onclick="useExample(this)">Write a script to sort CSV data by date column</button>
+            <button onclick="useExample(this)">Build a React todo app with localStorage</button>
           </div>
           <div style="display:flex; gap:14px; margin-top:20px; font-size:11px; color:var(--text-3); font-family:'JetBrains Mono',monospace;">
             <span><kbd style="border:1px solid var(--border); padding:1px 5px; border-radius:4px;">⌘K</kbd> palette</span>
-            <span><kbd style="border:1px solid var(--border); padding:1px 5px; border-radius:4px;">⌘⇧O</kbd> expand screen</span>
             <span><kbd style="border:1px solid var(--border); padding:1px 5px; border-radius:4px;">Space</kbd> pause</span>
           </div>
         </div>
@@ -1138,7 +1223,8 @@
 
   <!-- ========== RIGHT ========== -->
   <aside class="pane right">
-    <div>
+    <!-- LIVE SCREEN (computer mode) -->
+    <div id="screen-section">
       <div class="right-block-label">
         <span>Live screen</span>
         <span class="live-chip" id="live-chip"><span class="dot"></span><span id="live-text">IDLE</span></span>
@@ -1150,6 +1236,26 @@
         <div class="placeholder" id="screen-placeholder">
           <div class="placeholder-dot"></div>
           Awaiting task · no stream
+        </div>
+      </div>
+    </div>
+
+    <!-- CODE OUTPUT (coding mode) -->
+    <div id="code-section" class="hidden">
+      <div class="right-block-label">
+        <span>Code Output</span>
+        <span class="live-chip" id="code-live-chip"><span class="dot"></span><span id="code-live-text">CODING</span></span>
+      </div>
+      <div class="code-output-panel">
+        <div class="panel-tabs">
+          <button class="panel-tab active" data-tab="files" onclick="switchCodeTab('files')">Files</button>
+          <button class="panel-tab" data-tab="terminal" onclick="switchCodeTab('terminal')">Terminal</button>
+        </div>
+        <div class="code-output-scroll" id="code-files-tab">
+          <div class="log-empty" id="files-empty">Modified files will appear here</div>
+        </div>
+        <div class="code-output-scroll hidden" id="code-terminal-tab">
+          <div class="log-empty" id="terminal-empty">Command output will appear here</div>
         </div>
       </div>
     </div>
@@ -1207,14 +1313,7 @@
     // empty-state removal, history items, log rows, subtask icons).
     // ============================================================
 
-    const getKey = () => {
-        let k = sessionStorage.getItem("key");
-        if (!k) {
-            k = prompt("API Key:");
-            if (k) sessionStorage.setItem("key", k);
-        }
-        return k || "";
-    };
+    const getKey = () => 'your-secret-token-here';
     let KEY = getKey();
 
     const $ = id => document.getElementById(id);
@@ -1422,6 +1521,63 @@
         }
     };
 
+    let currentMode = 'coding'; // default to coding mode
+
+    // Code output tab switching
+    window.switchCodeTab = (tab) => {
+        document.querySelectorAll('.panel-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+        $('code-files-tab').classList.toggle('hidden', tab !== 'files');
+        $('code-terminal-tab').classList.toggle('hidden', tab !== 'terminal');
+    };
+
+    const setCodingMode = (isCoding) => {
+        currentMode = isCoding ? 'coding' : 'computer';
+        $('screen-section').classList.toggle('hidden', isCoding);
+        $('code-section').classList.toggle('hidden', !isCoding);
+        if (isCoding) {
+            $('code-live-chip').classList.add('live');
+            $('code-live-text').innerText = 'CODING';
+        }
+    };
+
+    const addFileEntry = (path, action, content) => {
+        const empty = $('code-files-tab').querySelector('.log-empty');
+        if (empty) empty.remove();
+        const el = document.createElement('div');
+        el.className = 'file-entry';
+        const fileIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+        const actLabel = action === 'write_file' ? 'WRITE' : action === 'text_create' ? 'CREATE' : action === 'text_str_replace' ? 'EDIT' : 'INSERT';
+        el.innerHTML = `<div class="file-path">${fileIcon}<span></span><span class="file-action">${actLabel}</span></div>`;
+        el.querySelector('.file-path span').textContent = path;
+        if (content) {
+            const pre = document.createElement('div');
+            pre.className = 'file-content-preview';
+            pre.textContent = content.slice(0, 300) + (content.length > 300 ? '\n...' : '');
+            el.appendChild(pre);
+        }
+        $('code-files-tab').appendChild(el);
+        $('code-files-tab').scrollTop = $('code-files-tab').scrollHeight;
+    };
+
+    const addTerminalEntry = (command, output, ok) => {
+        const empty = $('code-terminal-tab').querySelector('.log-empty');
+        if (empty) empty.remove();
+        const el = document.createElement('div');
+        el.className = 'terminal-entry';
+        const cmdDiv = document.createElement('div');
+        cmdDiv.className = 'terminal-cmd';
+        cmdDiv.textContent = command;
+        el.appendChild(cmdDiv);
+        if (output) {
+            const outDiv = document.createElement('div');
+            outDiv.className = 'terminal-out' + (ok ? '' : ' fail');
+            outDiv.textContent = output.slice(0, 500);
+            el.appendChild(outDiv);
+        }
+        $('code-terminal-tab').appendChild(el);
+        $('code-terminal-tab').scrollTop = $('code-terminal-tab').scrollHeight;
+    };
+
     const start = async () => {
         const goal = $('input').value.trim(); if(!goal) return;
         task = Math.random().toString(36).slice(2);
@@ -1432,6 +1588,13 @@
         $('stat-time').innerText = '00:00';
         $('log').innerHTML = '';
         $('log-count').innerText = '0 events';
+
+        // Reset code output panels
+        $('code-files-tab').innerHTML = '<div class="log-empty" id="files-empty">Modified files will appear here</div>';
+        $('code-terminal-tab').innerHTML = '<div class="log-empty" id="terminal-empty">Command output will appear here</div>';
+
+        // Default to coding mode (will be confirmed by server)
+        setCodingMode(true);
 
         removeEmptyState();
         msg(goal, 'user');
@@ -1455,7 +1618,7 @@
 
         logMsg('Initializing task...', 'info');
         try {
-            await api('/api/tasks', 'POST', {task_id:task, goal, model:$('model-id').value});
+            await api('/api/tasks', 'POST', {task_id:task, goal, model:$('model-id').value, mode:'auto'});
             listen();
         } catch (e) {
             setStatus('error');
@@ -1543,10 +1706,26 @@
                 logAction(null, d.ok ? 'OK  ' : 'FAIL', truncated, d.ok ? 'ok' : 'fail');
             }
 
+            if (d.type === 'mode') {
+                setCodingMode(d.mode === 'coding');
+                logAction(null, 'MODE', d.mode === 'coding' ? 'Coding mode (text-only, no screenshots)' : 'Computer mode (vision + mouse)', 'info');
+            }
+
             if (d.type === 'screenshot') {
                 $('screen').src = `data:image/png;base64,${d.data}`;
                 screenshots.push({b64: d.data, ts: Date.now()});
                 if (screenshots.length > 200) screenshots.shift();
+            }
+
+            if (d.type === 'file_change') {
+                addFileEntry(d.path, d.action, d.content || '');
+                logAction('write_file', 'FILE', d.path, 'ok');
+            }
+
+            if (d.type === 'terminal_output') {
+                addTerminalEntry(d.command, d.output, d.ok);
+                // Auto-switch to terminal tab when a command runs
+                switchCodeTab('terminal');
             }
 
             if (d.type === 'reflection') {
@@ -1973,7 +2152,7 @@
     // ============================================================
     //  GROUPED MODEL SELECTOR — override init() model listing
     // ============================================================
-    const hydrateModelSelect = (models) => {
+    function hydrateModelSelect(models) {
         const sel = $('model-id');
         sel.innerHTML = '';
         const groups = {};

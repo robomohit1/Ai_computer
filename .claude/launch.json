@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ai-computer",
+      "runtimeExecutable": "C:\\Users\\ACER\\AppData\\Local\\Programs\\Python\\Python310\\python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000", "--log-level", "warning"],
+      "port": 8000,
+      "env": {
+        "AGENT_API_KEY": "previewkey"
+      }
+    }
+  ]
+}

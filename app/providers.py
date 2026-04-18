@@ -42,6 +42,61 @@ text_undo_edit, browser_open, browser_screenshot, browser_click, browser_click_c
 browser_scroll, browser_get_text, browser_accessibility_tree, browser_navigate_back, browser_close, type_with_delay, find_on_screen, get_clipboard, set_clipboard, notify.
 Never output markdown. Never output prose outside JSON."""
 
+# ──────────────────────────────────────────────────────────────────────────────
+#  CODING MODE PROMPTS  — no screenshots, no mouse/keyboard/vision actions
+# ──────────────────────────────────────────────────────────────────────────────
+CODING_SYSTEM_PROMPT = """You are an expert autonomous coding agent. You write, read, and execute code.
+Return ONLY valid JSON with shape:
+{
+  "reasoning": str,
+  "overall_complete": bool,
+  "sub_tasks": [
+    {
+      "id": str,
+      "description": str,
+      "actions": [{"id": str, "type": str, "args": object, "explanation": str, "requires_approval": false}]
+    }
+  ]
+}
+Decompose the goal into 2-8 sequential sub-tasks. Each sub-task should be independently verifiable.
+
+Available action types for coding:
+- write_file: {"path": str, "content": str}  — create/overwrite a file
+- read_file: {"path": str}  — read a file's contents
+- run_command: {"command": str}  — run a shell command (install deps, run tests, etc.)
+- text_create: {"path": str, "file_text": str}  — create a new file (fails if exists)
+- text_view: {"path": str, "view_range": [start, end] | null}  — view file or directory listing
+- text_str_replace: {"path": str, "old_str": str, "new_str": str}  — precise find & replace
+- text_insert: {"path": str, "insert_line": int, "new_str": str}  — insert at line number
+- text_undo_edit: {"path": str}  — undo last edit to a file
+- move_file: {"source": str, "destination": str}  — rename/move a file
+- finish: {"reason": str}  — mark task as complete
+
+Rules:
+1. Use relative paths from the workspace root.
+2. Create directories automatically via write_file (parents are auto-created).
+3. For large files, use write_file. For surgical edits, use text_str_replace.
+4. Always verify your work: after writing code, run it or read it back.
+5. Install dependencies with run_command before importing them.
+6. Do NOT use mouse, keyboard, screenshot, or browser actions. Those are not available.
+7. When you generate action ids, use short descriptive strings like "create-main", "install-deps", etc.
+8. IMPORTANT: Use "python" (NOT "python3") to run Python scripts. The environment is Windows.
+9. In file content strings, use actual newline characters (\\n). Do NOT use \\r\\n.
+Never output markdown. Never output prose outside JSON."""
+
+CODING_REFLECT_PROMPT = """You are a reflection agent for an autonomous coding agent.
+Given a completed sub-task description, the actions that ran, and their outputs (stdout/stderr/file contents),
+determine if the sub-task succeeded.
+Return ONLY valid JSON: {"success": bool, "reason": str, "retry_actions": []}
+If success is false, optionally populate retry_actions with corrective action objects using ONLY these types:
+write_file, read_file, run_command, text_create, text_view, text_str_replace, text_insert, text_undo_edit, move_file, finish.
+Never output markdown. Never output prose outside JSON."""
+
+CODING_EVALUATE_PROMPT = """You are an evaluation agent for an autonomous coding agent.
+Given a goal, the action history (file writes, command outputs, etc.), determine if the overall goal is complete.
+Return ONLY valid JSON: {"complete": bool, "reason": str}
+Never output markdown. Never output prose outside JSON."""
+
 REFLECT_SYSTEM_PROMPT = """You are a reflection agent for an autonomous computer agent.
 Given a completed sub-task description, the actions that ran, their results, and a screenshot of the
 current screen, determine if the sub-task succeeded.
@@ -53,6 +108,42 @@ EVALUATE_SYSTEM_PROMPT = """You are an evaluation agent for an autonomous comput
 Given a goal, the action history, and the current screenshot, determine if the overall goal is complete.
 Return ONLY valid JSON: {"complete": bool, "reason": str}
 Never output markdown. Never output prose outside JSON."""
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  Task mode detection
+# ──────────────────────────────────────────────────────────────────────────────
+_CODING_KEYWORDS = [
+    "write", "code", "script", "function", "class", "file", "create", "build",
+    "implement", "refactor", "debug", "fix", "test", "install", "pip", "npm",
+    "python", "javascript", "typescript", "html", "css", "react", "node",
+    "api", "server", "database", "sql", "json", "yaml", "config", "setup",
+    "project", "app", "module", "package", "library", "framework", "deploy",
+    "dockerfile", "git", "commit", "repository", "repo", "compile", "lint",
+    "format", "parse", "generate", "scaffold", "boilerplate", "template",
+    "algorithm", "data structure", "endpoint", "route", "middleware",
+    "component", "hook", "state", "reducer", "model", "schema", "migration",
+    "makefile", "cmake", "cargo", "gradle", "maven", "webpack", "vite",
+    ".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".rs", ".java", ".cpp",
+    ".c", ".h", ".rb", ".php", ".swift", ".kt", ".sh", ".bash",
+]
+
+_COMPUTER_KEYWORDS = [
+    "open", "click", "type into", "browser", "screenshot", "mouse", "scroll",
+    "desktop", "window", "drag", "notepad", "chrome", "firefox", "visual",
+    "screen", "navigate", "tab", "menu", "button", "gui", "interface",
+    "application", "launch", "icon", "taskbar", "cursor",
+]
+
+
+def detect_task_mode(goal: str, explicit_mode: Optional[str] = None) -> str:
+    """Return 'coding' or 'computer'. If explicit_mode is set, honour it."""
+    if explicit_mode and explicit_mode in ("coding", "computer"):
+        return explicit_mode
+    g = goal.lower()
+    coding_score = sum(1 for kw in _CODING_KEYWORDS if kw in g)
+    computer_score = sum(1 for kw in _COMPUTER_KEYWORDS if kw in g)
+    return "coding" if coding_score >= computer_score else "coding"  # default to coding for now
 
 
 def get_scale_factor(width: int, height: int) -> float:
@@ -298,11 +389,17 @@ class PlannerProvider:
         goal: str,
         latest_screenshot_b64: Optional[str] = None,
         memory_context: Optional[str] = None,
+        mode: str = "computer",
     ) -> HierarchicalPlan:
         prompt = f"Goal: {goal}\n\nDecompose this goal into 2-8 sequential sub-tasks with concrete actions."
         if memory_context:
             prompt = f"Relevant past experience:\n{memory_context}\n\n{prompt}"
-        raw_text = self._call_llm(HIERARCHICAL_SYSTEM_PROMPT, prompt, latest_screenshot_b64)
+        if mode == "coding":
+            system = CODING_SYSTEM_PROMPT
+            raw_text = self._call_llm(system, prompt)  # no screenshot for coding
+        else:
+            system = HIERARCHICAL_SYSTEM_PROMPT
+            raw_text = self._call_llm(system, prompt, latest_screenshot_b64)
         return HierarchicalPlan.model_validate(_extract_json(raw_text))
 
     def reflect_on_subtask(
@@ -310,21 +407,35 @@ class PlannerProvider:
         description: str,
         actions: List[Dict[str, Any]],
         results: List[str],
-        post_screenshot_b64: Optional[str],
+        post_screenshot_b64: Optional[str] = None,
+        mode: str = "computer",
     ) -> Dict[str, Any]:
-        prompt = (
-            f"Sub-task: {description}\n\n"
-            f"Actions taken:\n{json.dumps(actions, indent=2)}\n\n"
-            f"Results:\n{json.dumps(results, indent=2)}\n\n"
-            "Based on the screenshot and results, did this sub-task succeed?"
-        )
-        raw_text = self._call_llm(REFLECT_SYSTEM_PROMPT, prompt, post_screenshot_b64)
+        if mode == "coding":
+            prompt = (
+                f"Sub-task: {description}\n\n"
+                f"Actions taken:\n{json.dumps(actions, indent=2)}\n\n"
+                f"Results (stdout/stderr/file contents):\n{json.dumps(results, indent=2)}\n\n"
+                "Based on the action results, did this sub-task succeed?"
+            )
+            raw_text = self._call_llm(CODING_REFLECT_PROMPT, prompt)  # no screenshot
+        else:
+            prompt = (
+                f"Sub-task: {description}\n\n"
+                f"Actions taken:\n{json.dumps(actions, indent=2)}\n\n"
+                f"Results:\n{json.dumps(results, indent=2)}\n\n"
+                "Based on the screenshot and results, did this sub-task succeed?"
+            )
+            raw_text = self._call_llm(REFLECT_SYSTEM_PROMPT, prompt, post_screenshot_b64)
         return _extract_json(raw_text)
 
     def evaluate(
-        self, goal: str, history: List[str], latest_screenshot_b64: Optional[str] = None
+        self, goal: str, history: List[str], latest_screenshot_b64: Optional[str] = None,
+        mode: str = "computer",
     ) -> Dict[str, Any]:
         recent = history[-20:]
         prompt = f"Goal: {goal}\n\nRecent action history:\n" + "\n".join(recent) + "\n\nIs the overall goal now complete?"
-        raw_text = self._call_llm(EVALUATE_SYSTEM_PROMPT, prompt, latest_screenshot_b64)
+        if mode == "coding":
+            raw_text = self._call_llm(CODING_EVALUATE_PROMPT, prompt)  # no screenshot
+        else:
+            raw_text = self._call_llm(EVALUATE_SYSTEM_PROMPT, prompt, latest_screenshot_b64)
         return _extract_json(raw_text)

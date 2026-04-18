@@ -49,7 +49,8 @@ from pydantic import BaseModel, Field
 class TaskIn(BaseModel):
     task_id: str
     goal: str = Field(..., min_length=5, max_length=2000)
-    model: Optional[str] = "claude-3-5-sonnet-20241022"
+    model: Optional[str] = "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+    mode: Optional[str] = "auto"  # auto, coding, computer
     screen_width: int = 1280
     screen_height: int = 800
 
@@ -83,17 +84,20 @@ async def health():
     }
 
 _ALL_MODELS = [
+    # Free models (OpenRouter) — tested and working
+    "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+    "openrouter/arcee-ai/trinity-large-preview:free",
+    "openrouter/meta-llama/llama-3.3-70b-instruct:free",
+    "openrouter/qwen/qwen3-coder:free",
+    "openrouter/google/gemma-4-31b-it:free",
+    "openrouter/nousresearch/hermes-3-llama-3.1-405b:free",
+    # Paid models
     "claude-3-5-sonnet-20241022",
     "claude-3-7-sonnet-20250219",
-    "claude-3-opus-20240229",
-    "claude-3-5-haiku-20241022",
     "gpt-4o",
     "gpt-4o-mini",
     "gemini-2.5-flash",
     "gemini-2.0-flash",
-    "groq/llama-3.3-70b-versatile",
-    "openrouter/anthropic/claude-3.5-sonnet",
-    "openrouter/meta-llama/llama-3.2-90b-vision-instruct:free",
 ]
 
 @app.get("/api/models")
@@ -101,6 +105,15 @@ async def get_models():
     # Return models gated by available API keys; fall back to full list so
     # the selector is never empty (server will fail gracefully if key is missing).
     keyed = []
+    if os.environ.get("OPENROUTER_API_KEY"):
+        keyed.extend([
+            "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+            "openrouter/arcee-ai/trinity-large-preview:free",
+            "openrouter/meta-llama/llama-3.3-70b-instruct:free",
+            "openrouter/qwen/qwen3-coder:free",
+            "openrouter/google/gemma-4-31b-it:free",
+            "openrouter/nousresearch/hermes-3-llama-3.1-405b:free",
+        ])
     if os.environ.get("ANTHROPIC_API_KEY"):
         keyed.extend(["claude-3-5-sonnet-20241022", "claude-3-7-sonnet-20250219",
                        "claude-3-opus-20240229", "claude-3-5-haiku-20241022"])
@@ -110,10 +123,6 @@ async def get_models():
         keyed.extend(["gemini-2.5-flash", "gemini-2.0-flash"])
     if os.environ.get("GROQ_API_KEY"):
         keyed.extend(["groq/llama-3.3-70b-versatile", "groq/llama-3.2-90b-vision-preview"])
-    if os.environ.get("OPENROUTER_API_KEY"):
-        keyed.extend(["openrouter/anthropic/claude-3.5-sonnet",
-                       "openrouter/meta-llama/llama-3.2-90b-vision-instruct:free",
-                       "openrouter/qwen/qwen-2-vl-72b-instruct:free"])
     return {"models": keyed if keyed else _ALL_MODELS}
 
 @app.get("/api/tasks", dependencies=[Depends(verify_token)])
@@ -145,7 +154,8 @@ async def create_task(body: TaskIn):
         goal=body.goal,
         screen_width=body.screen_width,
         screen_height=body.screen_height,
-        model=body.model or "claude-3-5-sonnet-20241022",
+        model=body.model or "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+        mode=body.mode or "auto",
     )
     _tasks[body.task_id] = record
     return {"task_id": body.task_id, "status": "running"}

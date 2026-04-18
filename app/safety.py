@@ -8,15 +8,26 @@ class SafetyManager:
         t = action.type.value
 
         high_risk = {"run_command", "write_file", "move_file", "text_create", "text_str_replace", "text_insert"}
+
+        # Hard-blocked dangerous commands — always require approval regardless of mode
         if t == "run_command":
             cmd = action.args.get("command", "").lower()
-            dangerous_patterns = ["rm -rf /", "format ", "del /f /s", ":(){ :|:& };:"]
+            dangerous_patterns = ["rm -rf /", "format ", "del /f /s", ":(){ :|:& };:",
+                                  "rd /s /q c:", "rmdir /s /q c:", "shutdown", "reboot"]
             if any(p in cmd for p in dangerous_patterns):
                 return ActionDecision(
                     danger=DangerLevel.high,
                     reason=f"Hard-blocked dangerous shell command: {cmd}",
                     requires_approval=True
                 )
+
+        # In coding mode (safe_mode=False), auto-approve file ops and safe commands
+        if not safe_mode and t in high_risk:
+            return ActionDecision(
+                danger=DangerLevel.medium,
+                reason="coding mode — auto-approved",
+                requires_approval=False,
+            )
             
         if t in high_risk:
             return ActionDecision(

@@ -17,7 +17,7 @@ from .models import (
     ToolError,
     ToolResult,
 )
-from .providers import PlannerProvider, _capture_screenshot_b64
+from .providers import PlannerProvider, _capture_screenshot_b64, detect_task_mode
 from .safety import SafetyManager
 from .text_editor import TextEditorTool
 from .tools import ToolExecutor
@@ -61,7 +61,9 @@ class AgentService:
         screen_width: int = 1280,
         screen_height: int = 800,
         model: str = "claude-3-5-sonnet-20241022",
+        mode: str = "auto",
     ) -> TaskRecord:
+        detected_mode = detect_task_mode(goal, mode if mode != "auto" else None)
         context = AgentContext(
             goal=goal,
             screen_width=screen_width,
@@ -69,7 +71,7 @@ class AgentService:
         )
         record = TaskRecord(id=task_id, status="running", context=context, goal=goal)
         self._active_tasks[task_id] = asyncio.create_task(
-            self.run_task(task_id, goal, screen_width, screen_height, model)
+            self.run_task(task_id, goal, screen_width, screen_height, model, detected_mode)
         )
         return record
 
@@ -80,16 +82,21 @@ class AgentService:
         screen_width: int = 1280,
         screen_height: int = 800,
         model: str = "claude-3-5-sonnet-20241022",
+        mode: str = "coding",
     ):
         provider = PlannerProvider(model=model)
-        self._emit(task_id, "status", {"message": "Initializing planning..."})
+        is_coding = mode == "coding"
+        self._emit(task_id, "status", {"message": f"Initializing planning... (mode: {mode})"})
+        self._emit(task_id, "mode", {"mode": mode})
         try:
             context_memories = self.memory.search(goal, limit=5)
             memory_context: Optional[str] = None
             if context_memories:
                 memory_context = "\n".join(f"- {m.content}" for m in context_memories)
 
-            plan = provider.plan_hierarchical(goal, memory_context=memory_context, latest_screenshot_b64=_capture_screenshot_b64(screen_width, screen_height))
+            # In coding mode, skip screenshot capture entirely
+            screenshot_b64 = None if is_coding else _capture_screenshot_b64(screen_width, screen_height)
+            plan = provider.plan_hierarchical(goal, memory_context=memory_context, latest_screenshot_b64=screenshot_b64, mode=mode)
             self._emit(task_id, "plan", plan.model_dump())
 
             history: List[str] = []
@@ -115,7 +122,7 @@ class AgentService:
                     action_count += 1
                     
                     action = Action(**action_data.model_dump())
-                    decision = self.safety.evaluate(action)
+                    decision = self.safety.evaluate(action, safe_mode=not is_coding)
 
                     self._emit(task_id, "action_start", {
                         "action_id": action.id,
@@ -139,13 +146,15 @@ class AgentService:
 
                             return
 
+                    # Longer timeout for coding commands (builds can be slow)
+                    timeout = 120.0 if is_coding else 30.0
                     try:
                         res = await asyncio.wait_for(
                             self.tools.run_action(action, sw=screen_width, sh=screen_height),
-                            timeout=30.0
+                            timeout=timeout
                         )
                     except asyncio.TimeoutError:
-                        res = ToolResult(ok=False, output="Action timed out after 30 seconds.")
+                        res = ToolResult(ok=False, output=f"Action timed out after {timeout} seconds.")
                     except Exception as e:
                         res = ToolResult(ok=False, output=f"Action failed with exception: {str(e)}")
 
@@ -158,17 +167,35 @@ class AgentService:
                     history.append(log_entry)
                     self._emit(task_id, "action_result", {"action_id": action.id, "ok": res.ok, "output": res.output})
 
-                    if action.type in _SCREENSHOT_ACTIONS or action.type == ActionType.screenshot:
-                        screenshot = res.base64_image or _capture_screenshot_b64(screen_width, screen_height)
-                        self._emit(task_id, "screenshot", {"data": screenshot})
+                    # In coding mode, emit file content changes instead of screenshots
+                    if is_coding:
+                        if action.type.value in ("write_file", "text_create", "text_str_replace", "text_insert"):
+                            file_path = action.args.get("path", "")
+                            self._emit(task_id, "file_change", {
+                                "path": file_path,
+                                "action": action.type.value,
+                                "content": action.args.get("content", action.args.get("file_text", "")),
+                            })
+                        elif action.type.value == "run_command":
+                            self._emit(task_id, "terminal_output", {
+                                "command": action.args.get("command", ""),
+                                "output": res.output,
+                                "ok": res.ok,
+                            })
+                    else:
+                        if action.type in _SCREENSHOT_ACTIONS or action.type == ActionType.screenshot:
+                            screenshot = res.base64_image or _capture_screenshot_b64(screen_width, screen_height)
+                            self._emit(task_id, "screenshot", {"data": screenshot})
 
                 # Reflection
                 self._emit(task_id, "status", {"message": "Reflecting on progress..."})
+                reflect_screenshot = None if is_coding else _capture_screenshot_b64(screen_width, screen_height)
                 reflection = provider.reflect_on_subtask(
                     sub_task.description,
                     actions_taken,
                     results,
-                    _capture_screenshot_b64(screen_width, screen_height),
+                    reflect_screenshot,
+                    mode=mode,
                 )
                 self._emit(task_id, "reflection", reflection)
 
@@ -183,7 +210,7 @@ class AgentService:
                             retry_data["id"] = str(uuid.uuid4())
                         try:
                             retry_action = Action(**retry_data)
-                            retry_res = await asyncio.wait_for(self.tools.run_action(retry_action, sw=screen_width, sh=screen_height), timeout=30.0)
+                            retry_res = await asyncio.wait_for(self.tools.run_action(retry_action, sw=screen_width, sh=screen_height), timeout=timeout)
                             self.memory.add_action_result(task_id, retry_action.id, retry_res.output)
                             history.append(f"Retry: {retry_action.type.value} -> {retry_res.output}")
                             self._emit(
@@ -202,14 +229,16 @@ class AgentService:
                     
                     if consecutive_fails > 2:
                         self._emit(task_id, "status", {"message": "Multiple failures detected. Re-planning..."})
-                        plan = provider.plan_hierarchical(goal + f" (Re-planning after failures. History: {history[-5:]})", memory_context, latest_screenshot_b64=_capture_screenshot_b64(screen_width, screen_height))
+                        replan_screenshot = None if is_coding else _capture_screenshot_b64(screen_width, screen_height)
+                        plan = provider.plan_hierarchical(goal + f" (Re-planning after failures. History: {history[-5:]})", memory_context, latest_screenshot_b64=replan_screenshot, mode=mode)
                         self._emit(task_id, "plan", plan.model_dump())
                         consecutive_fails = 0
                 else:
                     consecutive_fails = 0
 
             # Final Evaluation
-            eval_res = provider.evaluate(goal, history, _capture_screenshot_b64(screen_width, screen_height))
+            eval_screenshot = None if is_coding else _capture_screenshot_b64(screen_width, screen_height)
+            eval_res = provider.evaluate(goal, history, eval_screenshot, mode=mode)
             status = "done" if eval_res.get("complete") else "failed"
             self._finalize(task_id, status, eval_res.get("reason", ""))
 
