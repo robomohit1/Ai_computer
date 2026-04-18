@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -66,8 +67,8 @@ class Action(BaseModel):
 class ToolResult(BaseModel):
     ok: bool
     output: str
-    base64_image: Optional[str] = None  # fix: carry screenshot data from tools
-    data: Optional[Dict[str, Any]] = None  # fix: carry structured data (e.g. cursor pos)
+    base64_image: Optional[str] = None
+    data: Optional[Dict[str, Any]] = None
 
 
 class ToolError(Exception):
@@ -94,6 +95,10 @@ class TaskRecord(BaseModel):
     status: str = "pending"
     context: AgentContext
     paused: bool = False
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    finished_at: Optional[str] = None
+    goal: Optional[str] = None
+    reason: Optional[str] = None
 
 
 class SubTask(BaseModel):

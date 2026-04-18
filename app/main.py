@@ -5,6 +5,7 @@ import asyncio
 import json
 import os
 import secrets
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Optional, List
 from fastapi import Depends, FastAPI, HTTPException, Request, Security
@@ -32,6 +33,15 @@ workspace_dir = Path("workspace")
 workspace_dir.mkdir(parents=True, exist_ok=True)
 (workspace_dir / "logs").mkdir(parents=True, exist_ok=True)
 service = AgentService(workspace_dir, log_emitter=log_emitter)
+
+def _on_complete(task_id: str, status: str, reason: str):
+    rec = _tasks.get(task_id)
+    if rec:
+        rec.status = status
+        rec.finished_at = datetime.now(timezone.utc).isoformat()
+        rec.reason = reason
+
+service._on_task_complete = _on_complete
 
 
 from pydantic import BaseModel, Field
@@ -89,15 +99,21 @@ async def get_models():
 
 @app.get("/api/tasks", dependencies=[Depends(verify_token)])
 async def get_all_tasks():
-    res = []
-    for tid, t in _tasks.items():
-        res.append({
-            "id": tid,
-            "goal": t.context.goal,
-            "status": t.status,
-            "paused": t.paused
-        })
-    return {"tasks": res}
+    return {
+        "tasks": [
+            {
+                "id": tid,
+                "goal": t.goal or t.context.goal,
+                "status": t.status,
+                "paused": t.paused,
+                "created_at": t.created_at,
+                "finished_at": t.finished_at,
+                "reason": t.reason,
+            }
+            for tid, t in _tasks.items()
+        ]
+    }
+
 
 @app.post("/api/tasks", dependencies=[Depends(verify_token)])
 async def create_task(body: TaskIn):
@@ -133,6 +149,7 @@ async def cancel_task(task_id: str):
     if task_id in _tasks:
         _tasks[task_id].status = "cancelled"
     log_emitter.emit(task_id, "cancelled", {"message": "Task cancelled by user"})
+
     return {"task_id": task_id, "status": "cancelled"}
 
 @app.post("/api/tasks/{task_id}/pause", dependencies=[Depends(verify_token)])
@@ -172,7 +189,9 @@ async def stream_task(task_id: str, request: Request, token: Optional[str] = Non
     if p_token != API_KEY:
         auth = request.headers.get("Authorization", "")
         if not auth.startswith("Bearer ") or auth[7:] != API_KEY:
-            raise HTTPException(status_code=401)
+            async def _bad_auth():
+                yield 'data: {"type":"error","message":"unauthorized"}\n\n'
+            return StreamingResponse(_bad_auth(), media_type="text/event-stream", status_code=401)
 
     async def event_generator():
         q = log_emitter.subscribe(task_id)

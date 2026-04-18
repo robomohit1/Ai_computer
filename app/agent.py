@@ -3,7 +3,7 @@ import asyncio
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from .log_emitter import LogEmitter
 from .memory import MemoryStore
@@ -48,6 +48,9 @@ class AgentService:
         self._active_tasks: dict[str, asyncio.Task] = {}
         self._paused_tasks: set[str] = set()
         self._approvals: Dict[str, asyncio.Future] = {}
+        self._pause_events: Dict[str, asyncio.Event] = {}
+        self._on_task_complete: Optional[Callable[[str, str, str], None]] = None
+        self.plugin_registry.load_defaults()
 
     def _emit(self, task_id: str, event: str, data: Dict[str, Any]):
         self.log_emitter.emit(task_id, event, data)
@@ -65,7 +68,7 @@ class AgentService:
             screen_width=screen_width,
             screen_height=screen_height,
         )
-        record = TaskRecord(id=task_id, status="running", context=context)
+        record = TaskRecord(id=task_id, status="running", context=context, goal=goal)
         self._active_tasks[task_id] = asyncio.create_task(
             self.run_task(task_id, goal, screen_width, screen_height, model)
         )
@@ -113,21 +116,27 @@ class AgentService:
                     action_count += 1
                     
                     action = Action(**action_data.model_dump())
-
                     decision = self.safety.evaluate(action)
-                    if decision.requires_approval:
-                        action.requires_approval = True
 
-                    if action.requires_approval:
-                        self._emit(
-                            task_id,
-                            "approval_required",
-                            {"action_id": action.id, "action": action.model_dump()},
-                        )
+                    self._emit(task_id, "action_start", {
+                        "action_id": action.id,
+                        "action_type": action.type.value,
+                        "explanation": action.explanation,
+                    })
+
+                    if action.requires_approval or decision.requires_approval:
+                        self._emit(task_id, "approval_required", {
+                            "action_id": action.id,
+                            "action": action.model_dump(),
+                            "danger": decision.danger.value,
+                            "reason": decision.reason,
+                            "explanation": action.explanation,
+                        })
                         approved = await self._wait_for_approval(task_id, action.id)
                         if not approved:
                             self._emit(task_id, "status", {"message": f"Action {action.id} rejected. Stopping."})
-                            self._emit(task_id, "done", {"complete": False, "reason": "Action rejected by user."})
+                            self._finalize(task_id, "cancelled", "user rejected action")
+
                             return
 
                     try:
@@ -201,6 +210,9 @@ class AgentService:
 
             # Final Evaluation
             eval_res = provider.evaluate(goal, history, _capture_screenshot_b64(screen_width, screen_height))
+            status = "done" if eval_res.get("complete") else "failed"
+            self._finalize(task_id, status, eval_res.get("reason", ""))
+
             self._emit(task_id, "done", eval_res)
             
             # Store goal outcome in memory
@@ -211,11 +223,17 @@ class AgentService:
                 record.cancel()
 
         except asyncio.CancelledError:
-            self._emit(task_id, "cancelled", {"message": "Task cancelled by user."})
-            raise
+            self._finalize(task_id, "cancelled", "task cancelled")
+            self._emit(task_id, "cancelled", {"message": "Task cancelled"})
+
         except Exception as e:
+            self._finalize(task_id, "failed", str(e))
             self._emit(task_id, "error", {"message": str(e)})
             self._emit(task_id, "done", {"complete": False, "reason": f"Crashed: {str(e)}"})
+
+    def _finalize(self, task_id: str, status: str, reason: str = ""):
+        if self._on_task_complete:
+            self._on_task_complete(task_id, status, reason)
 
     async def _wait_for_approval(self, task_id: str, action_id: str) -> bool:
         fut_id = f"{task_id}:{action_id}"

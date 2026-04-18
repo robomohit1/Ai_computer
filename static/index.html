@@ -1,503 +1,2090 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Computer</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-dark.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        body { 
-            font-family: 'Inter', sans-serif; 
-            background: #0f0f0f; 
-            color: #ffffff;
-            margin: 0;
-        }
-        
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Computer</title>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* neutrals — warm off-black ramp (Claude-style cream-tinted dark) */
+    --bg-0: oklch(0.17 0.006 60);             /* app bg, deepest */
+    --bg-1: oklch(0.20 0.007 60);             /* panels */
+    --bg-2: oklch(0.235 0.008 60);            /* raised */
+    --bg-3: oklch(0.28 0.009 60);             /* hover */
+    --border: oklch(0.28 0.008 60);
+    --border-strong: oklch(0.36 0.01 60);
+    --text-0: oklch(0.97 0.008 75);           /* cream white */
+    --text-1: oklch(0.80 0.012 70);
+    --text-2: oklch(0.60 0.014 65);
+    --text-3: oklch(0.46 0.013 60);
 
-        /* Left Sidebar */
-        .sidebar { background: #111111; border-right: 1px solid #2a2a2a; }
-        
-        /* Center Panel */
-        .center-panel { background: #0f0f0f; }
-        .header { background: #0f0f0f; border-bottom: 1px solid #2a2a2a; }
-        .input-area { background: #0f0f0f; border-top: 1px solid #2a2a2a; }
-        .input-box { background: #1a1a1a; border: 1px solid #2a2a2a; }
-        .input-box:focus-within { border-color: #6366f1; }
-        
-        /* Right Panel */
-        .right-panel { background: #111111; border-left: 1px solid #2a2a2a; }
-        .live-screen { background: #000; border: 1px solid #2a2a2a; position: relative; }
-        .activity-log { background: #1a1a1a; border: 1px solid #2a2a2a; font-family: monospace; }
-        .stats-bar { background: #1a1a1a; border: 1px solid #2a2a2a; }
+    /* Claude signature accent — warm terracotta */
+    --accent:       oklch(0.74 0.14 48);
+    --accent-hover: oklch(0.80 0.14 48);
+    --accent-dim:   oklch(0.74 0.14 48 / 0.14);
+    --accent-edge:  oklch(0.74 0.14 48 / 0.38);
 
-        /* Chat Bubbles */
-        .chat-bubble { max-width: 85%; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 0.9rem; line-height: 1.5; }
-        .user-bubble { background: #1a1a1a; border: 1px solid #2a2a2a; align-self: flex-end; }
-        .ai-bubble { background: #1a1a1a; border: 1px solid #2a2a2a; align-self: flex-start; }
-        .warn-bubble { background: rgba(245, 158, 11, 0.1); border: 1px solid #f59e0b; align-self: flex-start; color: #fcd34d; }
-        .error-bubble { background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; align-self: flex-start; color: #fca5a5; }
-        .success-bubble { background: rgba(34, 197, 94, 0.1); border: 1px solid #22c55e; align-self: flex-start; color: #86efac; }
-        .cancel-bubble { background: rgba(156, 163, 175, 0.1); border: 1px solid #6b7280; align-self: flex-start; color: #d1d5db; }
+    /* semantic */
+    --ok:    oklch(0.80 0.13 150);
+    --ok-dim:oklch(0.80 0.13 150 / 0.12);
+    --warn:  oklch(0.84 0.13 85);
+    --warn-dim: oklch(0.84 0.13 85 / 0.12);
+    --err:   oklch(0.72 0.19 25);
+    --err-dim: oklch(0.72 0.19 25 / 0.12);
 
-        /* Task History */
-        .task-history-item { 
-            padding: 10px 12px; 
-            border-radius: 6px; 
-            cursor: pointer; 
-            font-size: 0.85rem; 
-            color: #a1a1aa; 
-            transition: all 180ms ease; 
-        }
-        .task-history-item:hover { background: #1a1a1a; color: #e4e4e7; }
-        .task-history-item.active { background: #1a1a1a; color: #ffffff; border-left: 2px solid #6366f1; border-radius: 0 6px 6px 0; }
+    --radius: 8px;
+    --radius-lg: 12px;
 
-        /* Status & Animation */
-        .dot { height: 8px; width: 8px; border-radius: 50%; display: inline-block; }
-        .dot-pulse { animation: pulse 2s infinite; }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+    --shadow-pop: 0 10px 40px -10px rgb(0 0 0 / .7), 0 2px 8px -2px rgb(0 0 0 / .4);
+  }
 
-        /* Subtasks */
-        .subtask-item { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; font-size: 0.85rem; }
-        .subtask-pending { color: #71717a; }
-        .subtask-running { color: #6366f1; animation: pulse 1.5s infinite; }
-        .subtask-done { color: #22c55e; }
-        .subtask-failed { color: #ef4444; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 13px;
+    color: var(--text-0);
+    background: var(--bg-0);
+    -webkit-font-smoothing: antialiased;
+    letter-spacing: -0.005em;
+    overflow: hidden;
+    font-feature-settings: 'ss01', 'cv11';
+  }
+  /* subtle paper grain — earns the 'premium' feel */
+  body::before {
+    content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-image: radial-gradient(oklch(0.98 0.02 60 / 0.018) 1px, transparent 1px);
+    background-size: 3px 3px;
+    mix-blend-mode: overlay;
+  }
+  .app { position: relative; z-index: 1; }
+  .serif { font-family: 'Instrument Serif', 'Times New Roman', serif; font-weight: 400; letter-spacing: -0.01em; }
+  button { font-family: inherit; cursor: pointer; }
 
-        /* Modal */
-        .modal-overlay { background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(4px); }
-        .modal-card { background: #1a1a1a; border: 1px solid #2a2a2a; }
+  /* scrollbars */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: oklch(0.3 0.005 260); border-radius: 10px; border: 2px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-thumb:hover { background: oklch(0.4 0.005 260); border: 2px solid transparent; background-clip: content-box; }
 
-        /* Inputs & Buttons */
-        .btn-indigo { background: #6366f1; color: white; transition: background 180ms ease; }
-        .btn-indigo:hover { background: #4f46e5; }
-        .btn-outline { background: transparent; border: 1px solid #2a2a2a; color: #e4e4e7; transition: all 180ms ease; }
-        .btn-outline:hover { background: #2a2a2a; color: white; }
-        select { background: #1a1a1a; border: 1px solid #2a2a2a; color: #e4e4e7; }
-        select:focus { border-color: #6366f1; outline: none; }
-        
-        .placeholder-anim {
-            background: linear-gradient(90deg, #111 25%, #1a1a1a 50%, #111 75%);
-            background-size: 200% 100%;
-            animation: loading 2s infinite linear;
-        }
-        @keyframes loading { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  /* ============ layout ============ */
+  .app {
+    display: grid;
+    grid-template-columns: 260px minmax(0,1fr) 360px;
+    height: 100vh;
+    width: 100vw;
+  }
+  .pane {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    height: 100vh;
+  }
 
-    </style>
+  /* ============ sidebar ============ */
+  .sidebar {
+    background: var(--bg-1);
+    border-right: 1px solid var(--border);
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    padding: 18px 18px 16px;
+  }
+  .brand-mark {
+    width: 26px; height: 26px; border-radius: 7px;
+    background: var(--accent);
+    display: grid; place-items: center;
+    box-shadow: 0 0 0 1px oklch(1 0 0 / 0.08) inset, 0 1px 0 oklch(0 0 0 / 0.3);
+    flex-shrink: 0;
+  }
+  .brand-mark svg { width: 14px; height: 14px; color: oklch(0.2 0.02 60); }
+  .brand-name { font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 18px; letter-spacing: -0.015em; white-space: nowrap; flex: 0 0 auto; }
+  .brand-ver { font-size: 10px; color: var(--text-3); font-family: 'JetBrains Mono', monospace; margin-left: auto; }
+
+  .new-task-btn {
+    margin: 4px 14px 18px;
+    padding: 8px 12px;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    color: var(--text-0);
+    border-radius: 7px;
+    font-size: 12.5px;
+    font-weight: 500;
+    display: flex; align-items: center; justify-content: space-between;
+    transition: background 120ms ease, border-color 120ms ease;
+  }
+  .new-task-btn:hover { background: var(--bg-3); border-color: var(--border-strong); }
+  .new-task-btn kbd {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-2);
+    padding: 2px 5px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-1);
+  }
+
+  .sidebar-section-label {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 18px 10px;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--text-3);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .sidebar-section-label .count {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-3);
+    letter-spacing: 0;
+  }
+
+  .history-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 8px;
+  }
+  .history-item {
+    padding: 9px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 120ms ease;
+    display: flex; gap: 10px; align-items: flex-start;
+    margin-bottom: 1px;
+  }
+  .history-item:hover { background: var(--bg-2); }
+  .history-item.active { background: var(--bg-2); }
+  .history-item.active::before {
+    content: ''; position: absolute; width: 2px; height: 16px; background: var(--accent); border-radius: 2px;
+    margin-left: -10px; margin-top: 1px;
+  }
+  .history-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    margin-top: 7px; flex-shrink: 0;
+    background: var(--text-3);
+  }
+  .history-dot.running { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); animation: pulse 1.8s infinite; }
+  .history-dot.done { background: var(--ok); }
+  .history-dot.failed { background: var(--err); }
+  .history-meta {
+    min-width: 0; flex: 1;
+  }
+  .history-goal {
+    font-size: 12.5px; color: var(--text-1);
+    line-height: 1.35;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .history-item.active .history-goal { color: var(--text-0); }
+  .history-time {
+    font-size: 10.5px; color: var(--text-3); margin-top: 3px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .sidebar-footer {
+    border-top: 1px solid var(--border);
+    padding: 14px 16px 16px;
+  }
+  .footer-label {
+    font-size: 10.5px; font-weight: 600; color: var(--text-3);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    margin-bottom: 8px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .model-select-wrap {
+    position: relative;
+  }
+  .model-select-wrap::after {
+    content: ''; position: absolute; right: 12px; top: 50%; width: 7px; height: 7px;
+    border-right: 1.5px solid var(--text-2); border-bottom: 1.5px solid var(--text-2);
+    transform: translateY(-75%) rotate(45deg);
+    pointer-events: none;
+  }
+  #model-id {
+    appearance: none;
+    width: 100%;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    color: var(--text-0);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    padding: 8px 28px 8px 10px;
+    border-radius: 6px;
+    outline: none;
+    transition: border-color 120ms ease;
+  }
+  #model-id:focus, #model-id:hover { border-color: var(--border-strong); }
+  #model-id option { background: var(--bg-2); color: var(--text-0); }
+
+  /* ============ center panel ============ */
+  .center { background: var(--bg-0); position: relative; }
+  .center-header {
+    height: 56px;
+    padding: 0 22px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; flex-shrink: 0;
+  }
+  .task-title {
+    font-weight: 600;
+    font-size: 13.5px;
+    color: var(--text-0);
+    letter-spacing: -0.01em;
+    min-width: 0;
+    flex: 1 1 auto;
+    margin: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .task-title.idle { color: var(--text-2); font-weight: 400; font-family: 'Instrument Serif', serif; font-size: 18px; font-style: italic; letter-spacing: -0.01em; }
+
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 4px 10px 4px 8px;
+    border-radius: 999px;
+    font-size: 10.5px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    color: var(--text-2);
+    flex-shrink: 0;
+  }
+  .status-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); }
+  .status-pill.running { background: var(--accent-dim); border-color: var(--accent-edge); color: var(--accent); }
+  .status-pill.running .dot { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); animation: pulse 1.6s infinite; }
+  .status-pill.paused { background: var(--warn-dim); border-color: oklch(0.82 0.14 85 / 0.3); color: var(--warn); }
+  .status-pill.paused .dot { background: var(--warn); }
+  .status-pill.complete { background: var(--ok-dim); border-color: oklch(0.78 0.15 155 / 0.3); color: var(--ok); }
+  .status-pill.complete .dot { background: var(--ok); }
+  .status-pill.error, .status-pill.failed { background: var(--err-dim); border-color: oklch(0.7 0.21 25 / 0.3); color: var(--err); }
+  .status-pill.error .dot, .status-pill.failed .dot { background: var(--err); }
+
+  .header-left { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1 1 auto; overflow: hidden; }
+  .task-title { flex: 1 1 auto; min-width: 0; }
+
+  .header-ctrls { display: flex; gap: 6px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 11px;
+    border-radius: 6px;
+    font-size: 12px; font-weight: 500;
+    border: 1px solid var(--border);
+    background: var(--bg-2);
+    color: var(--text-0);
+    transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  }
+  .btn:hover { background: var(--bg-3); border-color: var(--border-strong); }
+  .btn.danger { color: var(--err); border-color: oklch(0.7 0.21 25 / 0.25); background: var(--err-dim); }
+  .btn.danger:hover { background: oklch(0.7 0.21 25 / 0.2); }
+  .btn.accent { background: var(--accent); border-color: transparent; color: oklch(0.18 0.03 60); font-weight: 600; box-shadow: 0 0 0 1px oklch(1 0 0 / 0.06) inset; }
+  .btn.accent:hover { background: var(--accent-hover); }
+
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 28px 28px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    scroll-behavior: smooth;
+  }
+  .messages-inner {
+    max-width: 740px;
+    width: 100%;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  /* Empty state */
+  .empty-state {
+    flex: 1;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 18px;
+    color: var(--text-2);
+    text-align: center;
+    padding: 40px 20px;
+  }
+  .empty-state .mark {
+    width: 48px; height: 48px; border-radius: 12px;
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    display: grid; place-items: center;
+    color: var(--text-2);
+  }
+  .empty-state h2 { margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 28px; color: var(--text-0); letter-spacing: -0.02em; }
+  .empty-state p { margin: 0; font-size: 13px; color: var(--text-2); max-width: 380px; line-height: 1.5; }
+  .example-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 4px; }
+  .example-chips button {
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    color: var(--text-1);
+    padding: 7px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    transition: all 120ms ease;
+  }
+  .example-chips button:hover { background: var(--bg-2); color: var(--text-0); border-color: var(--border-strong); }
+
+  /* ============ chat bubbles ============ */
+  .bubble {
+    padding: 12px 14px;
+    border-radius: 10px;
+    font-size: 13px;
+    line-height: 1.55;
+    max-width: 100%;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+  }
+  .user-bubble {
+    align-self: flex-end;
+    background: var(--accent-dim);
+    border: 1px solid var(--accent-edge);
+    color: var(--text-0);
+    max-width: 80%;
+    padding: 10px 14px;
+  }
+  .ai-bubble {
+    align-self: flex-start;
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    color: var(--text-1);
+    max-width: 90%;
+  }
+  .warn-bubble {
+    align-self: flex-start;
+    background: var(--warn-dim);
+    border: 1px solid oklch(0.82 0.14 85 / 0.3);
+    color: oklch(0.9 0.11 85);
+    max-width: 90%;
+  }
+  .error-bubble {
+    align-self: flex-start;
+    background: var(--err-dim);
+    border: 1px solid oklch(0.7 0.21 25 / 0.3);
+    color: oklch(0.85 0.14 25);
+    max-width: 90%;
+  }
+  .success-bubble {
+    align-self: flex-start;
+    background: var(--ok-dim);
+    border: 1px solid oklch(0.78 0.15 155 / 0.3);
+    color: oklch(0.88 0.13 155);
+    max-width: 90%;
+    font-weight: 500;
+  }
+  .cancel-bubble {
+    align-self: flex-start;
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    color: var(--text-2);
+    max-width: 90%;
+    font-style: italic;
+  }
+
+  /* Plan block */
+  .plan-card {
+    align-self: stretch;
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+    max-width: 100%;
+  }
+  .plan-card .plan-label {
+    display: flex; align-items: center; gap: 10px;
+    font-family: 'Instrument Serif', serif; font-style: italic;
+    font-size: 16px; color: var(--accent);
+    letter-spacing: -0.005em;
+    margin-bottom: 10px;
+  }
+  .plan-card .plan-label::before {
+    content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim);
+  }
+  .plan-reasoning {
+    font-size: 12.5px;
+    color: var(--text-1);
+    line-height: 1.55;
+    padding-bottom: 12px;
+    margin-bottom: 12px;
+    border-bottom: 1px dashed var(--border);
+  }
+  .subtask-list { display: flex; flex-direction: column; gap: 2px; }
+  .subtask-item {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 6px 6px 6px 4px;
+    border-radius: 6px;
+    font-size: 12.5px;
+    line-height: 1.45;
+    transition: background 120ms ease, color 120ms ease;
+  }
+  .subtask-icon {
+    width: 16px; height: 16px; border-radius: 50%;
+    display: grid; place-items: center;
+    font-size: 10px;
+    flex-shrink: 0;
+    margin-top: 1px;
+    border: 1px solid var(--border);
+    color: var(--text-3);
+    background: transparent;
+    transition: all 120ms ease;
+  }
+  .subtask-pending { color: var(--text-2); }
+  .subtask-running { color: var(--text-0); background: var(--accent-dim); }
+  .subtask-running .subtask-icon { background: var(--accent); color: oklch(0.2 0.03 60); border-color: var(--accent); animation: pulse 1.5s infinite; }
+  .subtask-done { color: var(--text-2); }
+  .subtask-done .subtask-icon { background: var(--ok); color: oklch(0.2 0.03 150); border-color: var(--ok); }
+  .subtask-failed { color: var(--err); }
+  .subtask-failed .subtask-icon { background: var(--err); color: white; border-color: var(--err); }
+
+  /* ============ input ============ */
+  .composer-wrap {
+    padding: 14px 22px 18px;
+    flex-shrink: 0;
+  }
+  .composer-inner { max-width: 740px; width: 100%; margin: 0 auto; }
+  .composer {
+    background: var(--bg-1);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 6px 10px 6px 14px;
+    display: flex; align-items: flex-end; gap: 10px;
+    transition: border-color 120ms ease, background 120ms ease;
+  }
+  .composer:focus-within {
+    border-color: var(--border-strong);
+    background: var(--bg-2);
+  }
+  .composer textarea {
+    flex: 1;
+    background: transparent;
+    border: none; outline: none;
+    resize: none;
+    color: var(--text-0);
+    font-size: 13.5px;
+    font-family: inherit;
+    line-height: 1.55;
+    padding: 10px 0;
+    max-height: 160px;
+    min-height: 22px;
+  }
+  .composer textarea::placeholder { color: var(--text-3); }
+  .composer-send {
+    display: grid; place-items: center;
+    width: 30px; height: 30px;
+    border-radius: 7px;
+    background: var(--accent);
+    color: oklch(0.18 0.03 60);
+    border: none;
+    margin-bottom: 4px;
+    transition: background 120ms ease, transform 120ms ease;
+    box-shadow: 0 0 0 1px oklch(1 0 0 / 0.06) inset;
+  }
+  .composer-send:hover { background: var(--accent-hover); }
+  .composer-send:disabled { background: var(--bg-2); color: var(--text-3); cursor: not-allowed; }
+  .composer-send svg { width: 14px; height: 14px; }
+
+  .composer-hints {
+    display: flex; justify-content: space-between;
+    font-size: 10.5px;
+    color: var(--text-3);
+    margin-top: 8px; padding: 0 4px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .composer-hints kbd {
+    font-family: inherit;
+    padding: 1px 5px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-2);
+    background: var(--bg-1);
+  }
+
+  /* ============ right panel ============ */
+  .right { background: var(--bg-1); border-left: 1px solid var(--border); padding: 16px; gap: 16px; }
+
+  .right-block-label {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 10.5px; font-weight: 600;
+    color: var(--text-3); text-transform: uppercase; letter-spacing: 0.08em;
+    margin-bottom: 8px;
+  }
+
+  .live-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 8px;
+    font-size: 9.5px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--text-2);
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .live-chip .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--text-3); }
+  .live-chip.live { color: var(--err); }
+  .live-chip.live .dot { background: var(--err); animation: pulse 1.4s infinite; }
+
+  .live-screen {
+    background: oklch(0.08 0 0);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    aspect-ratio: 16 / 10;
+    overflow: hidden;
+    position: relative;
+    display: grid; place-items: center;
+    flex-shrink: 0;
+  }
+  .live-screen img { width: 100%; height: 100%; object-fit: contain; display: none; position: absolute; inset: 0; }
+  .live-screen img.on { display: block; }
+  .live-screen .placeholder {
+    font-size: 11px;
+    color: var(--text-3);
+    font-family: 'JetBrains Mono', monospace;
+    text-align: center;
+    padding: 20px;
+    letter-spacing: 0.02em;
+  }
+  .live-screen .grid-bg {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(to right, oklch(0.22 0 0) 1px, transparent 1px),
+      linear-gradient(to bottom, oklch(0.22 0 0) 1px, transparent 1px);
+    background-size: 24px 24px;
+    opacity: 0.5;
+    mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+  }
+  .live-screen .placeholder-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--text-3); margin: 0 auto 10px;
+    animation: pulse 1.8s infinite;
+  }
+
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .stat-card {
+    background: var(--bg-0);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .stat-label {
+    font-size: 9.5px; font-weight: 600;
+    color: var(--text-3); text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+  }
+  .stat-value {
+    font-size: 20px;
+    font-weight: 500;
+    font-family: 'Instrument Serif', serif;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+    color: var(--text-0);
+  }
+  .stat-value { font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap; }
+  .stat-value .sub { font-size: 12px; color: var(--text-3); font-weight: 400; font-family: 'JetBrains Mono', monospace; margin-left: 2px; letter-spacing: 0; }
+
+  .log-wrap {
+    flex: 1; min-height: 0;
+    display: flex; flex-direction: column;
+  }
+  .log {
+    flex: 1;
+    background: var(--bg-0);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow-y: auto;
+    padding: 10px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    line-height: 1.7;
+    min-height: 0;
+  }
+  .log-empty {
+    color: var(--text-3);
+    font-style: italic;
+    text-align: center;
+    padding: 20px 0;
+  }
+  .log-row { display: flex; gap: 10px; }
+  .log-row .ts { color: var(--text-3); flex-shrink: 0; }
+  .log-row .body { color: var(--text-1); min-width: 0; word-break: break-word; }
+  .log-row .body.ok { color: var(--ok); }
+  .log-row .body.fail { color: var(--err); }
+  .log-row .body.warn { color: var(--warn); }
+  .log-row .body.info { color: var(--text-1); }
+  .log-row .tag {
+    font-size: 9px;
+    font-weight: 600;
+    padding: 0 5px;
+    border-radius: 3px;
+    background: var(--bg-3);
+    color: var(--text-2);
+    margin-right: 4px;
+    letter-spacing: 0.05em;
+  }
+
+  /* ============ modal ============ */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: oklch(0.05 0 0 / 0.75);
+    backdrop-filter: blur(8px);
+    z-index: 50;
+    display: none;
+    align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal-card {
+    background: oklch(0.25 0.009 60);
+    border: 1px solid oklch(0.4 0.011 60);
+    border-radius: 14px;
+    width: 560px;
+    max-width: 100%;
+    box-shadow: 0 24px 80px -20px rgb(0 0 0 / .85), 0 6px 20px -4px rgb(0 0 0 / .5), 0 0 0 1px oklch(1 0 0 / 0.04) inset;
+    overflow: hidden;
+    opacity: 1;
+    position: relative;
+    z-index: 1;
+  }
+  .modal-overlay.show .modal-card {
+    animation: popin 180ms cubic-bezier(.2,.9,.2,1) both;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .modal-overlay.show .modal-card { animation: none; }
+  }
+  @keyframes popin { from { transform: translateY(8px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
+
+  .modal-head {
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px;
+    position: relative;
+  }
+  .modal-head::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--err);
+  }
+  .type-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px; font-weight: 600;
+    padding: 3px 8px;
+    background: var(--err-dim);
+    color: var(--err);
+    border: 1px solid oklch(0.7 0.21 25 / 0.3);
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .modal-head h2 { margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 22px; letter-spacing: -0.015em; color: var(--text-0); }
+  .modal-body { padding: 18px 22px 22px; }
+  .modal-body .reason {
+    color: var(--text-1);
+    font-size: 13px;
+    line-height: 1.55;
+    margin: 0 0 14px;
+  }
+  .code-block {
+    background: var(--bg-0);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    margin-bottom: 18px;
+  }
+  .code-block pre { margin: 0; font-size: 11.5px; }
+  .code-block code { font-family: 'JetBrains Mono', monospace; line-height: 1.6; }
+  .modal-actions { display: flex; gap: 10px; }
+  .modal-actions .btn { flex: 1; justify-content: center; padding: 10px; font-size: 13px; }
+  .modal-actions .btn kbd {
+    margin-left: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 1px 5px;
+    border: 1px solid oklch(1 0 0 / 0.15);
+    border-radius: 4px;
+    background: oklch(0 0 0 / 0.25);
+  }
+  .modal-actions .btn.accent kbd { border-color: oklch(0 0 0 / 0.25); background: oklch(0 0 0 / 0.12); color: oklch(0.2 0.03 60); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+
+  /* utility */
+  .hidden { display: none !important; }
+
+  /* ============ toast stack ============ */
+  .toast-stack {
+    position: fixed; top: 18px; right: 18px; z-index: 80;
+    display: flex; flex-direction: column; gap: 8px;
+    pointer-events: none;
+    max-width: 360px;
+  }
+  .toast {
+    pointer-events: auto;
+    background: var(--bg-1);
+    border: 1px solid var(--border-strong);
+    border-left: 3px solid var(--text-3);
+    border-radius: 8px;
+    padding: 10px 14px 10px 12px;
+    font-size: 12.5px;
+    color: var(--text-0);
+    box-shadow: 0 10px 30px -8px rgb(0 0 0 / .6), 0 2px 6px -1px rgb(0 0 0 / .3);
+    display: flex; gap: 10px; align-items: flex-start;
+    animation: toast-in 200ms cubic-bezier(.2,.9,.2,1) both;
+    backdrop-filter: blur(6px);
+  }
+  .toast.ok   { border-left-color: var(--ok); }
+  .toast.warn { border-left-color: var(--warn); }
+  .toast.err  { border-left-color: var(--err); }
+  .toast.info { border-left-color: var(--accent); }
+  .toast .t-icon { width: 14px; height: 14px; margin-top: 1px; flex-shrink: 0; color: var(--text-2); }
+  .toast.ok .t-icon { color: var(--ok); }
+  .toast.warn .t-icon { color: var(--warn); }
+  .toast.err .t-icon { color: var(--err); }
+  .toast.info .t-icon { color: var(--accent); }
+  .toast .t-body { flex: 1; line-height: 1.45; }
+  .toast .t-close { background: none; border: none; color: var(--text-3); cursor: pointer; padding: 0 2px; font-size: 14px; line-height: 1; }
+  .toast .t-close:hover { color: var(--text-0); }
+  .toast.out { animation: toast-out 160ms cubic-bezier(.5,0,.8,.3) both; }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateX(8px) scale(.98); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes toast-out {
+    to { opacity: 0; transform: translateX(8px) scale(.98); height: 0; padding: 0; margin: 0; border-width: 0; }
+  }
+
+  /* ============ command palette ============ */
+  .cmdk-overlay {
+    position: fixed; inset: 0;
+    background: oklch(0.04 0 0 / 0.55);
+    backdrop-filter: blur(10px);
+    z-index: 70;
+    display: none;
+    align-items: flex-start; justify-content: center;
+    padding-top: 14vh;
+  }
+  .cmdk-overlay.show { display: flex; animation: fade-in 140ms ease both; }
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+  .cmdk {
+    width: min(580px, 92vw);
+    background: oklch(0.23 0.008 60);
+    border: 1px solid oklch(0.38 0.011 60);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 30px 80px -20px rgb(0 0 0 / .7), 0 0 0 1px oklch(1 0 0 / 0.04) inset;
+    animation: cmdk-in 180ms cubic-bezier(.2,.9,.2,1) both;
+  }
+  @keyframes cmdk-in {
+    from { opacity: 0; transform: translateY(-8px) scale(.98); }
+    to { opacity: 1; transform: none; }
+  }
+  .cmdk-input-wrap {
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .cmdk-input-wrap svg { width: 16px; height: 16px; color: var(--text-2); flex-shrink: 0; }
+  .cmdk-input {
+    flex: 1;
+    background: transparent; border: none; outline: none;
+    color: var(--text-0);
+    font-family: inherit;
+    font-size: 14.5px;
+    letter-spacing: -0.005em;
+  }
+  .cmdk-input::placeholder { color: var(--text-3); }
+  .cmdk-hint {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; color: var(--text-3);
+    border: 1px solid var(--border);
+    padding: 2px 5px; border-radius: 4px;
+  }
+  .cmdk-list {
+    max-height: 52vh;
+    overflow-y: auto;
+    padding: 6px;
+  }
+  .cmdk-section {
+    padding: 10px 12px 4px;
+    font-size: 10.5px; font-weight: 600;
+    color: var(--text-3);
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  .cmdk-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 9px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text-1);
+    font-size: 13px;
+  }
+  .cmdk-item.active { background: var(--accent-dim); color: var(--text-0); }
+  .cmdk-item .cmdk-icon { width: 16px; height: 16px; color: var(--text-2); flex-shrink: 0; }
+  .cmdk-item.active .cmdk-icon { color: var(--accent); }
+  .cmdk-item .cmdk-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cmdk-item .cmdk-kbd {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; color: var(--text-3);
+    border: 1px solid var(--border);
+    padding: 2px 5px; border-radius: 4px;
+  }
+  .cmdk-item.active .cmdk-kbd { color: var(--text-1); border-color: var(--border-strong); }
+  .cmdk-empty {
+    padding: 28px 20px; text-align: center;
+    color: var(--text-3); font-size: 12.5px;
+    font-style: italic;
+  }
+  .cmdk-footer {
+    border-top: 1px solid var(--border);
+    padding: 8px 14px;
+    display: flex; gap: 14px;
+    font-size: 10.5px; color: var(--text-3);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .cmdk-footer kbd { font-family: inherit; color: var(--text-2); }
+
+  /* ============ lightbox ============ */
+  .lightbox {
+    position: fixed; inset: 0;
+    background: oklch(0.03 0 0 / 0.9);
+    backdrop-filter: blur(14px);
+    z-index: 75;
+    display: none;
+    align-items: center; justify-content: center;
+    padding: 40px 60px;
+  }
+  .lightbox.show { display: flex; }
+  .lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 10px; box-shadow: 0 30px 80px -20px rgb(0 0 0 / .9); }
+  .lightbox-close {
+    position: absolute; top: 18px; right: 18px;
+    width: 34px; height: 34px;
+    border-radius: 8px;
+    border: 1px solid var(--border-strong);
+    background: oklch(0.15 0 0 / 0.6);
+    color: var(--text-0);
+    display: grid; place-items: center;
+    backdrop-filter: blur(6px);
+  }
+  .lightbox-close:hover { background: oklch(0.25 0 0); }
+  .lightbox-nav {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    border: 1px solid var(--border-strong);
+    background: oklch(0.15 0 0 / 0.6);
+    color: var(--text-0);
+    display: grid; place-items: center;
+    backdrop-filter: blur(6px);
+  }
+  .lightbox-nav:hover { background: oklch(0.25 0 0); }
+  .lightbox-nav.prev { left: 18px; }
+  .lightbox-nav.next { right: 18px; }
+  .lightbox-caption {
+    position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; color: var(--text-2);
+    padding: 6px 12px;
+    background: oklch(0.15 0 0 / 0.6);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    backdrop-filter: blur(6px);
+  }
+
+  .live-screen { cursor: zoom-in; }
+  .live-screen .expand-hint {
+    position: absolute; top: 8px; right: 8px;
+    background: oklch(0.1 0 0 / 0.7);
+    border: 1px solid oklch(1 0 0 / 0.1);
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-1);
+    opacity: 0;
+    transition: opacity 120ms ease;
+    backdrop-filter: blur(6px);
+    z-index: 2;
+  }
+  .live-screen:hover .expand-hint { opacity: 1; }
+
+  /* ============ reflection card ============ */
+  .reflection-card {
+    align-self: stretch;
+    background: oklch(0.22 0.008 60);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--text-3);
+    border-radius: 10px;
+    padding: 12px 14px 13px 16px;
+    font-size: 12.5px;
+    color: var(--text-1);
+    line-height: 1.55;
+    max-width: 100%;
+    display: flex; gap: 10px; align-items: flex-start;
+  }
+  .reflection-card.success { border-left-color: var(--ok); }
+  .reflection-card.failure { border-left-color: var(--warn); }
+  .reflection-card .r-icon {
+    flex-shrink: 0; width: 14px; height: 14px; margin-top: 2px;
+    color: var(--text-3);
+  }
+  .reflection-card.success .r-icon { color: var(--ok); }
+  .reflection-card.failure .r-icon { color: var(--warn); }
+  .reflection-card .r-head {
+    font-family: 'Instrument Serif', serif;
+    font-style: italic;
+    font-size: 13.5px;
+    color: var(--text-0);
+    margin-bottom: 2px;
+  }
+  .reflection-card .r-body { color: var(--text-1); }
+
+  /* ============ log: action-type badges ============ */
+  .log-row .tag.shell { background: oklch(0.35 0.14 25 / 0.2); color: oklch(0.82 0.14 25); }
+  .log-row .tag.file  { background: oklch(0.35 0.1 230 / 0.2); color: oklch(0.8 0.1 230); }
+  .log-row .tag.text  { background: oklch(0.35 0.1 200 / 0.2); color: oklch(0.8 0.1 200); }
+  .log-row .tag.mouse { background: oklch(0.35 0.1 280 / 0.2); color: oklch(0.82 0.1 280); }
+  .log-row .tag.kbd   { background: oklch(0.35 0.1 280 / 0.2); color: oklch(0.82 0.1 280); }
+  .log-row .tag.scrn  { background: oklch(0.35 0.12 85 / 0.2); color: oklch(0.84 0.13 85); }
+  .log-row .tag.brow  { background: oklch(0.35 0.12 150 / 0.2); color: oklch(0.82 0.13 150); }
+  .log-row .tag.sys   { background: var(--bg-3); color: var(--text-2); }
+  .log-row .tag.api   { background: oklch(0.35 0.14 48 / 0.2); color: var(--accent); }
+
+  /* ============ tweaks panel ============ */
+  .tweaks {
+    position: fixed; bottom: 16px; right: 16px; z-index: 60;
+    width: 260px;
+    background: oklch(0.23 0.008 60);
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 20px 60px -10px rgb(0 0 0 / .55);
+    display: none;
+    font-size: 12px;
+  }
+  .tweaks.show { display: block; animation: cmdk-in 200ms ease both; }
+  .tweaks-head {
+    padding: 10px 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    font-family: 'Instrument Serif', serif;
+    font-style: italic;
+    font-size: 14px;
+    color: var(--text-0);
+  }
+  .tweaks-head .tw-close {
+    background: none; border: none; color: var(--text-3); cursor: pointer;
+    font-size: 16px; line-height: 1;
+  }
+  .tweaks-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 12px; }
+  .tw-row { display: flex; flex-direction: column; gap: 6px; }
+  .tw-label { font-size: 10.5px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.08em; }
+  .tw-swatches { display: flex; gap: 6px; }
+  .tw-swatch {
+    width: 22px; height: 22px; border-radius: 6px;
+    border: 1px solid var(--border); cursor: pointer;
+    position: relative;
+    transition: transform 120ms ease;
+  }
+  .tw-swatch:hover { transform: scale(1.08); }
+  .tw-swatch.active::after {
+    content: ''; position: absolute; inset: -3px;
+    border: 1.5px solid var(--text-0);
+    border-radius: 8px;
+    pointer-events: none;
+  }
+  .tw-seg {
+    display: flex; gap: 0;
+    background: var(--bg-0);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px;
+  }
+  .tw-seg button {
+    flex: 1; padding: 5px 8px;
+    background: transparent; border: none;
+    color: var(--text-2);
+    font-size: 11px; font-weight: 500;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 120ms ease;
+  }
+  .tw-seg button.active { background: var(--bg-2); color: var(--text-0); }
+
+  /* ============ density (compact mode) ============ */
+  body.density-compact {
+    --row-pad: 6px;
+    font-size: 12.5px;
+  }
+  body.density-compact .history-item { padding: 6px 10px; }
+  body.density-compact .messages { padding: 18px 22px 12px; gap: 8px; }
+  body.density-compact .bubble { padding: 9px 12px; }
+  body.density-compact .plan-card { padding: 12px 14px; }
+  body.density-compact .subtask-item { padding: 3px 4px; }
+  body.density-compact .center-header { height: 46px; }
+
+  /* reduce motion */
+  body.reduce-motion * { animation: none !important; transition: none !important; }
+</style>
 </head>
-<body class="flex h-screen overflow-hidden">
-    <!-- LEFT SIDEBAR -->
-    <div class="sidebar w-[240px] flex flex-col flex-shrink-0 h-full">
-        <div class="p-6 flex items-center gap-3">
-            <svg class="w-6 h-6 text-indigo-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z"/></svg>
-            <span class="font-bold text-lg tracking-tight">AI Computer</span>
-        </div>
-        <div class="px-4 pb-4">
-            <button onclick="location.reload()" class="w-full btn-indigo py-2 rounded-md text-sm font-medium">New Task</button>
-        </div>
-        <div class="px-4 text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2">History</div>
-        <div class="flex-1 overflow-y-auto px-2 space-y-1" id="task-history"></div>
-        
-        <div class="p-4 border-t border-zinc-800 space-y-3">
-            <div>
-                <label class="text-[10px] text-zinc-500 uppercase tracking-wider block mb-1">Model</label>
-                <select id="model-id" class="w-full text-xs rounded-md px-2 py-1.5 cursor-pointer"></select>
-            </div>
-            <div class="text-[10px] text-zinc-500" id="version-tag">v1.0.0</div>
-        </div>
+<body>
+
+<div class="app">
+
+  <!-- ========== SIDEBAR ========== -->
+  <aside class="pane sidebar">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 20h8M12 17v3"/></svg>
+      </div>
+      <span class="brand-name">AI Computer</span>
+      <span class="brand-ver" id="version-tag">v1.0.0</span>
     </div>
 
-    <!-- CENTER PANEL -->
-    <div class="center-panel flex-1 flex flex-col h-full relative min-w-0">
-        <header class="header h-[60px] flex items-center px-6 justify-between flex-shrink-0">
-            <div class="flex items-center space-x-4 min-w-0">
-                <h1 class="font-semibold text-zinc-100 truncate text-sm" id="task-title">Idle</h1>
-                <div class="flex items-center gap-2 px-2.5 py-1 rounded-full bg-zinc-800 border border-zinc-700" id="status-container">
-                    <span class="dot bg-zinc-500" id="status-dot"></span>
-                    <span id="status-pill" class="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Ready</span>
-                </div>
-            </div>
-            <div class="flex items-center space-x-2" id="controls" style="display: none;">
-                <button id="btn-pause" onclick="togglePause()" class="btn-outline px-3 py-1.5 rounded text-xs font-medium">Pause</button>
-                <button id="btn-cancel" onclick="cancelTask()" class="bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 px-3 py-1.5 rounded text-xs font-medium transition">Cancel</button>
-            </div>
-        </header>
-        
-        <div id="messages" class="flex-1 overflow-y-auto p-6 flex flex-col"></div>
-        
-        <div class="input-area p-6 flex-shrink-0">
-            <div class="input-box rounded-lg flex items-end relative transition-all">
-                <textarea id="input" rows="1" class="w-full bg-transparent p-4 pr-12 text-sm outline-none resize-none" placeholder="Enter your goal..."></textarea>
-                <button id="send" class="absolute right-3 bottom-3 p-1.5 text-indigo-500 hover:text-indigo-400 transition bg-indigo-500/10 rounded-md"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg></button>
-            </div>
-        </div>
+    <button class="new-task-btn" onclick="location.reload()">
+      <span>＋ New task</span>
+      <kbd>⌘N</kbd>
+    </button>
+
+    <div class="sidebar-section-label">
+      <span>History</span>
+      <span class="count" id="history-count">0</span>
+    </div>
+    <div class="history-scroll" id="task-history">
+      <div class="log-empty" style="font-size:11.5px; padding: 12px 10px; color: var(--text-3); font-style: italic;">No tasks yet</div>
     </div>
 
-    <!-- RIGHT PANEL -->
-    <div class="right-panel w-[320px] flex flex-col flex-shrink-0 h-full p-4 gap-4">
-        <div class="flex items-center justify-between">
-            <h3 class="text-xs font-bold text-zinc-500 uppercase tracking-widest">Live View</h3>
-            <div class="flex items-center gap-2 text-[10px] font-medium text-zinc-400 bg-[#1a1a1a] px-2 py-1 rounded border border-[#2a2a2a]"><span class="dot bg-red-500 dot-pulse" id="live-dot"></span><span id="live-text">IDLE</span></div>
+    <div class="sidebar-footer">
+      <div class="footer-label">Model</div>
+      <div class="model-select-wrap">
+        <select id="model-id"></select>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ========== CENTER ========== -->
+  <main class="pane center">
+    <header class="center-header">
+      <div class="header-left">
+        <h1 class="task-title idle" id="task-title">Idle</h1>
+        <span class="status-pill" id="status-pill-wrap">
+          <span class="dot"></span>
+          <span id="status-pill">Ready</span>
+        </span>
+      </div>
+      <div class="header-ctrls hidden" id="controls">
+        <button id="btn-pause" class="btn" onclick="togglePause()">Pause</button>
+        <button id="btn-cancel" class="btn danger" onclick="cancelTask()">Cancel</button>
+      </div>
+    </header>
+
+    <div class="messages" id="messages-scroll">
+      <div class="messages-inner" id="messages">
+        <div class="empty-state" id="empty-state">
+          <div class="mark">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6.3 6.3l1.4 1.4M16.3 16.3l1.4 1.4M6.3 17.7l1.4-1.4M16.3 7.7l1.4-1.4"/><circle cx="12" cy="12" r="4"/></svg>
+          </div>
+          <div>
+            <h2>What should we work on?</h2>
+            <p>Describe a task in plain English. The agent will plan, execute, and check its own work &mdash; pausing to ask you before anything risky.</p>
+          </div>
+          <div class="example-chips">
+            <button onclick="useExample(this)">Summarize the latest 5 emails in my inbox</button>
+            <button onclick="useExample(this)">Book a flight to SFO next Friday</button>
+            <button onclick="useExample(this)">Research competitors for a note-taking app</button>
+          </div>
+          <div style="display:flex; gap:14px; margin-top:20px; font-size:11px; color:var(--text-3); font-family:'JetBrains Mono',monospace;">
+            <span><kbd style="border:1px solid var(--border); padding:1px 5px; border-radius:4px;">⌘K</kbd> palette</span>
+            <span><kbd style="border:1px solid var(--border); padding:1px 5px; border-radius:4px;">⌘⇧O</kbd> expand screen</span>
+            <span><kbd style="border:1px solid var(--border); padding:1px 5px; border-radius:4px;">Space</kbd> pause</span>
+          </div>
         </div>
-        
-        <div class="live-screen rounded-lg flex-shrink-0 aspect-[16/10] flex items-center justify-center placeholder-anim">
-            <img id="screen" class="w-full h-full object-contain hidden" />
-            <span id="screen-placeholder" class="text-xs text-zinc-600 font-medium">Waiting for task...</span>
-        </div>
-        
-        <div class="text-xs font-bold text-zinc-500 uppercase tracking-widest mt-2">Activity Log</div>
-        <div id="log" class="activity-log flex-1 rounded-lg p-3 text-xs overflow-y-auto space-y-1.5"></div>
-        
-        <div class="stats-bar rounded-lg p-3 grid grid-cols-3 gap-2 text-center flex-shrink-0">
-            <div><div class="text-[10px] text-zinc-500 uppercase">Actions</div><div class="text-sm font-semibold" id="stat-actions">0</div></div>
-            <div><div class="text-[10px] text-zinc-500 uppercase">Subtasks</div><div class="text-sm font-semibold" id="stat-subtasks">0/0</div></div>
-            <div><div class="text-[10px] text-zinc-500 uppercase">Time</div><div class="text-sm font-semibold" id="stat-time">00:00</div></div>
-        </div>
+      </div>
     </div>
 
-    <!-- APPROVAL MODAL -->
-    <div id="approval" class="absolute inset-0 modal-overlay z-50 flex items-center justify-center hidden">
-        <div class="modal-card rounded-xl shadow-2xl w-[550px] p-8 max-w-[90vw]">
-            <div class="flex items-center gap-3 mb-4">
-                <span class="bg-red-500/20 text-red-500 px-3 py-1 rounded text-sm font-bold uppercase tracking-wider" id="app-type">DANGER</span>
-                <h2 class="text-xl font-bold text-zinc-100">Action Approval</h2>
-            </div>
-            <p id="app-reason" class="text-zinc-400 text-sm mb-6">The agent wants to execute a potentially dangerous action.</p>
-            <div class="bg-black rounded-lg p-4 font-mono text-xs mb-6 border border-zinc-800 overflow-x-auto">
-                <pre><code id="app-code" class="language-json"></code></pre>
-            </div>
-            <div class="flex space-x-4">
-                <button onclick="sendApp(false)" class="flex-1 py-2.5 px-4 rounded-lg btn-outline font-medium">Deny (Esc)</button>
-                <button onclick="sendApp(true)" class="flex-1 py-2.5 px-4 rounded-lg btn-indigo font-medium">Approve (Enter)</button>
-            </div>
+    <div class="composer-wrap">
+      <div class="composer-inner">
+        <div class="composer">
+          <textarea id="input" rows="1" placeholder="What should the agent do?"></textarea>
+          <button id="send" class="composer-send" aria-label="Send">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l14 0M13 6l6 6-6 6"/></svg>
+          </button>
         </div>
+        <div class="composer-hints">
+          <span><kbd>↵</kbd> send &nbsp; <kbd>⇧↵</kbd> newline</span>
+          <span id="char-count"></span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ========== RIGHT ========== -->
+  <aside class="pane right">
+    <div>
+      <div class="right-block-label">
+        <span>Live screen</span>
+        <span class="live-chip" id="live-chip"><span class="dot"></span><span id="live-text">IDLE</span></span>
+      </div>
+      <div class="live-screen" id="live-screen-box">
+        <div class="grid-bg" id="screen-grid"></div>
+        <img id="screen" alt="" />
+        <div class="expand-hint">⌘⇧O to expand</div>
+        <div class="placeholder" id="screen-placeholder">
+          <div class="placeholder-dot"></div>
+          Awaiting task · no stream
+        </div>
+      </div>
     </div>
 
-    <script>
-        let KEY = sessionStorage.getItem("key");
-        if (!KEY) {
-            KEY = prompt("API Key:");
-            if (KEY) sessionStorage.setItem("key", KEY);
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-label">Actions</div>
+        <div class="stat-value" id="stat-actions">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Subtasks</div>
+        <div class="stat-value" id="stat-subtasks">0<span class="sub">/0</span></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Elapsed</div>
+        <div class="stat-value" id="stat-time">00:00</div>
+      </div>
+    </div>
+
+    <div class="log-wrap">
+      <div class="right-block-label">
+        <span>Activity log</span>
+        <span id="log-count" style="font-family:'JetBrains Mono',monospace; color:var(--text-3); letter-spacing:0;">0 events</span>
+      </div>
+      <div class="log" id="log">
+        <div class="log-empty">Events will appear here when a task runs</div>
+      </div>
+    </div>
+  </aside>
+
+</div>
+
+<!-- ========== APPROVAL MODAL ========== -->
+<div id="approval" class="modal-overlay">
+  <div class="modal-card">
+    <div class="modal-head">
+      <span class="type-tag" id="app-type">DANGER</span>
+      <h2>Action requires approval</h2>
+    </div>
+    <div class="modal-body">
+      <p class="reason" id="app-reason">The agent wants to execute a potentially dangerous action.</p>
+      <div class="code-block"><pre><code id="app-code" class="language-json"></code></pre></div>
+      <div class="modal-actions">
+        <button class="btn" onclick="sendApp(false)">Deny <kbd>Esc</kbd></button>
+        <button class="btn accent" onclick="sendApp(true)">Approve <kbd>↵</kbd></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+    // ============================================================
+    // All JS logic preserved from the original — only light cosmetic
+    // changes to match the new DOM (status pill structure, live chip,
+    // empty-state removal, history items, log rows, subtask icons).
+    // ============================================================
+
+    let KEY = sessionStorage.getItem("key");
+    if (!KEY) {
+        KEY = prompt("API Key:");
+        if (KEY) sessionStorage.setItem("key", KEY);
+    }
+
+    const $ = id => document.getElementById(id);
+    let task = null;
+    let sse = null;
+    let isPaused = false;
+    let timer = null;
+    let startTime = 0;
+    let subtaskEls = {};
+    let stats = { actions: 0, subDone: 0, subTotal: 0, logEvents: 0 };
+    let historyItems = [];
+
+    const api = (p, m='GET', b=null) => fetch(p, {
+        method: m,
+        headers: {'Authorization':`Bearer ${KEY}`, 'Content-Type':'application/json'},
+        body: b ? JSON.stringify(b) : null
+    }).then(r => r.ok ? r.json() : Promise.reject(r));
+
+    const init = async () => {
+        try {
+            const health = await api('/api/health');
+            $('version-tag').innerText = `v${health.version}`;
+
+            const models = await api('/api/models');
+            hydrateModelSelect(models.models);
+
+            const tasks = await api('/api/tasks');
+            const reversed = (tasks.tasks || []).reverse();
+            if (reversed.length) $('task-history').innerHTML = '';
+            reversed.forEach(t => renderHistoryItem(t));
+            $('history-count').innerText = reversed.length;
+        } catch (e) {
+            console.error("Init failed", e);
+            toast('Could not reach the agent server', 'err', 5000);
+
         }
+    };
 
-        const $ = id => document.getElementById(id);
-        let task = null;
-        let sse = null;
-        let isPaused = false;
-        let timer = null;
-        let startTime = 0;
-        let subtaskEls = {};
-        let stats = { actions: 0, subDone: 0, subTotal: 0 };
+    const relTime = (ts) => {
+        if (!ts) return '';
+        const diff = Math.floor((Date.now() - (typeof ts === 'number' ? ts : Date.parse(ts))) / 1000);
+        if (isNaN(diff)) return '';
+        if (diff < 60) return `${diff}s ago`;
+        if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+        if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+        return `${Math.floor(diff/86400)}d ago`;
+    };
 
-        const api = (p, m='GET', b=null) => fetch(p, {
-            method: m, 
-            headers: {'Authorization':`Bearer ${KEY}`, 'Content-Type':'application/json'}, 
-            body: b ? JSON.stringify(b) : null
-        }).then(r => r.ok ? r.json() : Promise.reject(r));
+    const renderHistoryItem = (t, makeActive = false) => {
+        const histItem = document.createElement('div');
+        histItem.className = 'history-item' + (makeActive ? ' active' : '');
+        const status = t.status === 'running' ? 'running' : t.status === 'done' || t.status === 'completed' ? 'done' : t.status === 'failed' || t.status === 'error' ? 'failed' : '';
+        const when = t.created_at || t.timestamp || t.started_at;
+        const timeStr = relTime(when) || (t.status || '').toUpperCase();
+        histItem.innerHTML = `
+            <div class="history-dot ${status}"></div>
+            <div class="history-meta">
+                <div class="history-goal"></div>
+                <div class="history-time">${timeStr}</div>
+            </div>
+        `;
+        histItem.querySelector('.history-goal').innerText = t.goal || '(untitled)';
+        $('task-history').appendChild(histItem);
+        historyItems.push(histItem);
+        bindHistoryItem(histItem, t.id);
+    };
 
-        const init = async () => {
-            try {
-                const health = await api('/api/health');
-                $('version-tag').innerText = `v${health.version}`;
-                
-                const models = await api('/api/models');
-                const sel = $('model-id');
-                models.models.forEach(m => {
-                    const opt = document.createElement('option');
-                    opt.value = m;
-                    opt.textContent = m.split('/').pop();
-                    sel.appendChild(opt);
-                });
+    const addActiveHistoryItem = (goal) => {
+        // Remove empty-state message on first task
+        const emptyMsg = $('task-history').querySelector('.log-empty');
+        if (emptyMsg) emptyMsg.remove();
+        // Deactivate previous
+        historyItems.forEach(el => el.classList.remove('active'));
+        const item = document.createElement('div');
+        item.className = 'history-item active';
+        item.innerHTML = `
+            <div class="history-dot running"></div>
+            <div class="history-meta">
+                <div class="history-goal"></div>
+                <div class="history-time">just now</div>
+            </div>
+        `;
+        item.querySelector('.history-goal').innerText = goal;
+        $('task-history').prepend(item);
+        historyItems.unshift(item);
+        const current = parseInt($('history-count').innerText) || 0;
+        $('history-count').innerText = current + 1;
+        bindHistoryItem(item, task);
+        return item;
+    };
 
-                const tasks = await api('/api/tasks');
-                tasks.tasks.reverse().forEach(t => renderHistoryItem(t));
-            } catch (e) {
-                console.error("Init failed", e);
+    let activeHistoryItem = null;
+
+    const updateClock = () => {
+        if (!startTime) return;
+        const s = Math.floor((Date.now() - startTime) / 1000);
+        $('stat-time').innerText = `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+    };
+
+    const logMsg = (text, type='info') => {
+        const log = $('log');
+        const empty = log.querySelector('.log-empty');
+        if (empty) empty.remove();
+        const row = document.createElement('div');
+        row.className = 'log-row';
+        const stamp = new Date().toLocaleTimeString([], {hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit'});
+        const tsSpan = document.createElement('span'); tsSpan.className = 'ts'; tsSpan.innerText = stamp;
+        const bodySpan = document.createElement('span'); bodySpan.className = 'body ' + type; bodySpan.innerText = text;
+        row.appendChild(tsSpan); row.appendChild(bodySpan);
+        log.appendChild(row);
+        log.scrollTop = log.scrollHeight;
+        stats.logEvents++;
+        $('log-count').innerText = `${stats.logEvents} event${stats.logEvents === 1 ? '' : 's'}`;
+    };
+
+    const removeEmptyState = () => {
+        const es = $('empty-state');
+        if (es) es.remove();
+    };
+
+    const msg = (t, r) => {
+        removeEmptyState();
+        const d = document.createElement('div');
+        d.className = `${r}-bubble bubble`;
+        d.innerText = t;
+        $('messages').appendChild(d);
+        scrollMessages();
+        return d;
+    };
+
+    const scrollMessages = () => {
+        const s = $('messages-scroll');
+        s.scrollTop = s.scrollHeight;
+    };
+
+    const setStatus = (status, pulsing=false) => {
+        const labels = {
+            'ready': 'Ready', 'running': 'Running', 'paused': 'Paused',
+            'complete': 'Complete', 'error': 'Error', 'failed': 'Failed', 'cancelled': 'Cancelled'
+
+        };
+        const key = status.toLowerCase();
+        const label = labels[key] || status;
+        $('status-pill').innerText = label;
+        const pill = $('status-pill-wrap');
+        pill.className = 'status-pill ' + key;
+    };
+
+    const renderPlan = plan => {
+        removeEmptyState();
+        const planContainer = document.createElement('div');
+        planContainer.className = 'plan-card';
+        planContainer.innerHTML = `
+            <div class="plan-label">Hierarchical plan</div>
+            <div class="plan-reasoning"></div>
+            <div class="subtask-list"></div>
+        `;
+        planContainer.querySelector('.plan-reasoning').innerText = plan.reasoning || 'No reasoning provided.';
+        const list = planContainer.querySelector('.subtask-list');
+        stats.subTotal = (plan.sub_tasks || []).length;
+        stats.subDone = 0;
+        $('stat-subtasks').innerHTML = `0<span class="sub">/${stats.subTotal}</span>`;
+
+        (plan.sub_tasks || []).forEach((st, i) => {
+            const row = document.createElement('div');
+            row.className = 'subtask-item subtask-pending';
+            row.innerHTML = `<span class="subtask-icon">${i+1}</span><span class="subtask-label"></span>`;
+            row.querySelector('.subtask-label').innerText = st.description;
+            subtaskEls[st.id] = row;
+            list.appendChild(row);
+        });
+        $('messages').appendChild(planContainer);
+        scrollMessages();
+    };
+
+    const markSubtask = (id, state) => {
+        const el = subtaskEls[id];
+        if (!el) return;
+        el.className = `subtask-item subtask-${state}`;
+        const iconEl = el.querySelector('.subtask-icon');
+        const idx = [...el.parentNode.children].indexOf(el) + 1;
+        if (state === 'done') iconEl.textContent = '✓';
+        else if (state === 'running') iconEl.textContent = '●';
+        else if (state === 'failed') iconEl.textContent = '✕';
+        else iconEl.textContent = idx;
+        if (state === 'done') {
+            stats.subDone++;
+            $('stat-subtasks').innerHTML = `${stats.subDone}<span class="sub">/${stats.subTotal}</span>`;
+        }
+    };
+
+    const start = async () => {
+        const goal = $('input').value.trim(); if(!goal) return;
+        task = Math.random().toString(36).slice(2);
+        subtaskEls = {};
+        stats = { actions: 0, subDone: 0, subTotal: 0, logEvents: 0 };
+        $('stat-actions').innerText = '0';
+        $('stat-subtasks').innerHTML = `0<span class="sub">/0</span>`;
+        $('stat-time').innerText = '00:00';
+        $('log').innerHTML = '';
+        $('log-count').innerText = '0 events';
+
+        removeEmptyState();
+        msg(goal, 'user');
+        $('input').value = '';
+        updateCharCount();
+        autoGrow();
+        $('task-title').innerText = goal;
+        $('task-title').classList.remove('idle');
+        setStatus('running', true);
+        $('controls').classList.remove('hidden');
+
+        $('screen-placeholder').classList.add('hidden');
+        $('screen-grid').classList.add('hidden');
+        $('screen').classList.add('on');
+        const liveChip = $('live-chip'); liveChip.classList.add('live'); $('live-text').innerText = 'LIVE';
+
+        activeHistoryItem = addActiveHistoryItem(goal);
+
+        startTime = Date.now();
+        timer = setInterval(updateClock, 1000);
+
+        logMsg('Initializing task...', 'info');
+        try {
+            await api('/api/tasks', 'POST', {task_id:task, goal, model:$('model-id').value});
+            listen();
+        } catch (e) {
+            setStatus('error');
+            msg("Failed to start task.", "error");
+            logMsg('Failed to start task', 'fail');
+        }
+    };
+
+
+    const stopEverything = () => {
+        clearInterval(timer);
+        if (sse) sse.close();
+        $('controls').classList.add('hidden');
+        $('live-text').innerText = 'IDLE';
+        $('live-chip').classList.remove('live');
+    };
+
+    const markHistoryFinal = (state) => {
+        if (!activeHistoryItem) return;
+        const dot = activeHistoryItem.querySelector('.history-dot');
+        dot.className = 'history-dot ' + state;
+    };
+
+    const cancelTask = async () => {
+        await api(`/api/tasks/${task}`, 'DELETE');
+        setStatus('cancelled');
+        msg("Task cancelled by user.", "cancel");
+        logMsg('Task cancelled', 'warn');
+        markHistoryFinal('failed');
+        stopEverything();
+    };
+
+
+    const togglePause = async () => {
+        isPaused = !isPaused;
+        await api(`/api/tasks/${task}/${isPaused ? 'pause' : 'resume'}`, 'POST');
+        $('btn-pause').innerText = isPaused ? 'Resume' : 'Pause';
+        if (isPaused) {
+            setStatus('paused');
+            logMsg('Task paused', 'warn');
+        } else {
+            setStatus('running', true);
+            logMsg('Task resumed', 'info');
+        }
+    };
+
+    let currentSubtaskIdx = 0;
+    let planSubtasks = [];
+
+
+    const listen = () => {
+        sse = new EventSource(`/api/tasks/${task}/stream?token=${KEY}`);
+        sse.onmessage = e => {
+            const d = JSON.parse(e.data);
+
+            if (d.type === 'plan') {
+                planSubtasks = d.sub_tasks || [];
+                currentSubtaskIdx = 0;
+                renderPlan(d);
+            }
+
+            if (d.type === 'status') {
+                logAction(null, d.message, '', 'info');
+                const runningMatch = d.message && d.message.match(/Executing sub-task:/);
+                if (runningMatch && planSubtasks[currentSubtaskIdx]) {
+                    if (currentSubtaskIdx > 0 && subtaskEls[planSubtasks[currentSubtaskIdx-1].id] && subtaskEls[planSubtasks[currentSubtaskIdx-1].id].classList.contains('subtask-running')) {
+                        markSubtask(planSubtasks[currentSubtaskIdx-1].id, 'done');
+
+                    }
+                    markSubtask(planSubtasks[currentSubtaskIdx].id, 'running');
+                }
+            }
+
+            if (d.type === 'action_start') {
+                logAction(d.action_type, 'EXEC', d.args_summary || '', 'info');
+            }
+
+            if (d.type === 'action_result') {
+                stats.actions++;
+                $('stat-actions').innerText = stats.actions;
+                const truncated = (d.output || '').slice(0, 80).replace(/\n/g, ' ');
+                logAction(null, d.ok ? 'OK  ' : 'FAIL', truncated, d.ok ? 'ok' : 'fail');
+            }
+
+            if (d.type === 'screenshot') {
+                $('screen').src = `data:image/png;base64,${d.data}`;
+                screenshots.push({b64: d.data, ts: Date.now()});
+                if (screenshots.length > 200) screenshots.shift();
+            }
+
+            if (d.type === 'reflection') {
+                renderReflection(d);
+                if (d.success === false) {
+                    if (planSubtasks[currentSubtaskIdx]) {
+                        markSubtask(planSubtasks[currentSubtaskIdx].id, 'failed');
+                    }
+                    toast(`Subtask failed: ${(d.reason || 'unknown').slice(0, 60)}`, 'warn', 4200);
+                } else if (d.success === true) {
+                    if (planSubtasks[currentSubtaskIdx]) {
+                        markSubtask(planSubtasks[currentSubtaskIdx].id, 'done');
+                        currentSubtaskIdx++;
+
+                    }
+                }
+            }
+
+            if (d.type === 'approval_required') {
+                $('app-type').innerText = d.action.type;
+                // Handle both old and new payload shapes
+                const reason = d.reason || d.action.explanation || "High risk action requires approval.";
+                $('app-reason').innerText = reason;
+                $('app-code').innerText = JSON.stringify(d.action.args, null, 2);
+                try { hljs.highlightElement($('app-code')); } catch(err) {}
+                $('approval').classList.add('show');
+                window.tid = task;
+                window.aid = d.action_id;
+                toast('Agent is waiting for approval', 'warn', 6000);
+            }
+
+            if (d.type === 'error') {
+                msg(`Error: ${d.message}`, 'error');
+                setStatus('error');
+                logAction(null, 'ERROR', d.message, 'fail');
+                markHistoryFinal('failed');
+                toast(d.message || 'Task errored', 'err', 5000);
+                stopEverything();
+            }
+
+            if (d.type === 'done') {
+                if (planSubtasks[currentSubtaskIdx] && d.complete) {
+                    markSubtask(planSubtasks[currentSubtaskIdx].id, 'done');
+
+                }
+                if (d.complete) {
+                    setStatus('complete');
+                    msg("Task completed successfully 🎉", "success");
+                    logAction(null, 'DONE', 'Task complete', 'ok');
+                    markHistoryFinal('done');
+                    toast('Task complete', 'ok', 3200);
+                    confetti({ particleCount: 120, spread: 70, origin: { y: 0.6 }, colors: ['#d97757','#e89875','#f4c4a8','#f5f0e8','#ffffff'] });
+                } else {
+                    setStatus('failed');
+                    msg(`Task failed: ${d.reason}`, "error");
+                    logAction(null, 'FAILED', d.reason || '', 'fail');
+                    markHistoryFinal('failed');
+                    toast('Task failed', 'err', 4200);
+                }
+                stopEverything();
+            }
+
+            if (d.type === 'cancelled') {
+                setStatus('cancelled');
+                markHistoryFinal('failed');
+                stopEverything();
             }
         };
 
-        const renderHistoryItem = (t) => {
-            const histItem = document.createElement('div');
-            histItem.className = 'task-history-item';
-            const color = t.status === 'running' ? 'text-indigo-400' : t.status === 'done' ? 'text-green-500' : t.status === 'failed' ? 'text-red-500' : 'text-zinc-500';
-            histItem.innerHTML = `
-                <div class="flex items-center gap-2">
-                    <span class="dot ${color}"></span>
-                    <div class="truncate flex-1">${t.goal.slice(0, 38)}</div>
-                </div>
-            `;
-            $('task-history').appendChild(histItem);
-        };
-
-        const updateClock = () => {
-            if (!startTime) return;
-            const s = Math.floor((Date.now() - startTime) / 1000);
-            $('stat-time').innerText = `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
-        };
-
-        const logMsg = (text, type='info') => {
-            const log = $('log');
-            const div = document.createElement('div');
-            const color = type === 'ok' ? 'text-green-400' : type === 'fail' ? 'text-red-400' : type === 'warn' ? 'text-yellow-400' : 'text-zinc-400';
-            const stamp = new Date().toLocaleTimeString([], {hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit'});
-            div.innerHTML = `<span class="text-zinc-600">[${stamp}]</span> <span class="${color}">${text}</span>`;
-            log.appendChild(div);
-            log.scrollTop = log.scrollHeight;
-        };
-
-        const msg = (t, r) => {
-            const d = document.createElement('div');
-            d.className = `${r}-bubble chat-bubble`;
-            d.innerText = t;
-            $('messages').appendChild(d);
-            d.scrollIntoView({behavior:'smooth'});
-            return d;
-        };
-
-        const setStatus = (status, pulsing=false) => {
-            $('status-pill').innerText = status;
-            const dot = $('status-dot');
-            dot.className = 'dot ' + (pulsing ? 'dot-pulse ' : '');
-            if (status === 'Running') {
-                dot.classList.add('bg-indigo-500');
-                $('status-container').className = 'flex items-center gap-2 px-2.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20';
-                $('status-pill').className = 'text-[10px] font-bold uppercase tracking-widest text-indigo-400';
-            } else if (status === 'Complete') {
-                dot.classList.add('bg-green-500');
-                $('status-container').className = 'flex items-center gap-2 px-2.5 py-1 rounded-full bg-green-500/10 border border-green-500/20';
-                $('status-pill').className = 'text-[10px] font-bold uppercase tracking-widest text-green-400';
-            } else if (status === 'Error' || status === 'Failed') {
-                dot.classList.add('bg-red-500');
-                $('status-container').className = 'flex items-center gap-2 px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/20';
-                $('status-pill').className = 'text-[10px] font-bold uppercase tracking-widest text-red-400';
-            } else {
-                dot.classList.add('bg-zinc-500');
-                $('status-container').className = 'flex items-center gap-2 px-2.5 py-1 rounded-full bg-zinc-800 border border-zinc-700';
-                $('status-pill').className = 'text-[10px] font-bold uppercase tracking-widest text-zinc-400';
-            }
-        };
-
-        const renderPlan = plan => {
-            const planContainer = document.createElement('div');
-            planContainer.className = 'ai-bubble chat-bubble';
-            planContainer.innerHTML = `
-                <div class="text-xs font-bold text-zinc-500 uppercase mb-2">Hierarchical Plan</div>
-                <div class="text-xs text-zinc-400 mb-3 italic">${plan.reasoning}</div>
-                <div class="space-y-1"></div>
-            `;
-            const list = planContainer.querySelector('.space-y-1');
-            stats.subTotal = (plan.sub_tasks || []).length;
-            stats.subDone = 0;
-            $('stat-subtasks').innerText = `0/${stats.subTotal}`;
-            
-            (plan.sub_tasks || []).forEach((st, i) => {
-                const row = document.createElement('div');
-                row.className = 'subtask-item subtask-pending';
-                row.innerHTML = `<span class="subtask-icon">○</span><span>${i+1}. ${st.description}</span>`;
-                subtaskEls[st.id] = row;
-                list.appendChild(row);
-            });
-            $('messages').appendChild(planContainer);
-            planContainer.scrollIntoView({behavior:'smooth'});
-        };
-
-        const markSubtask = (id, state) => {
-            const el = subtaskEls[id];
-            if (!el) return;
-            el.className = `subtask-item subtask-${state}`;
-            const icon = state === 'done' ? '✓' : state === 'running' ? '●' : state === 'failed' ? '✗' : '○';
-            el.querySelector('.subtask-icon').textContent = icon;
-            if (state === 'done') {
-                stats.subDone++;
-                $('stat-subtasks').innerText = `${stats.subDone}/${stats.subTotal}`;
-            }
-        };
-
-        const start = async () => {
-            const goal = $('input').value.trim(); if(!goal) return;
-            task = Math.random().toString(36).slice(2);
-            subtaskEls = {};
-            stats = { actions: 0, subDone: 0, subTotal: 0 };
-            
-            msg(goal, 'user');
-            $('input').value = '';
-            $('task-title').innerText = goal;
-            setStatus('Running', true);
-            $('controls').style.display = 'flex';
-            
-            $('screen-placeholder').classList.add('hidden');
-            $('screen').classList.remove('hidden');
-            $('live-text').innerText = 'LIVE';
-
-            startTime = Date.now();
-            timer = setInterval(updateClock, 1000);
-            
-            logMsg('Initializing task...', 'info');
-            try {
-                await api('/api/tasks', 'POST', {task_id:task, goal, model:$('model-id').value});
-                listen();
-            } catch (e) {
-                setStatus('Error');
-                msg("Failed to start task.", "error");
-            }
-        };
-
-        const stopEverything = () => {
-            clearInterval(timer);
-            if (sse) sse.close();
-            $('controls').style.display = 'none';
-            $('live-text').innerText = 'IDLE';
-            $('live-dot').classList.remove('dot-pulse');
-        };
-
-        const cancelTask = async () => {
-            await api(`/api/tasks/${task}`, 'DELETE');
-            setStatus('Cancelled');
-            msg("Task cancelled by user.", "cancel");
+        sse.onerror = () => {
+            logMsg("Lost connection to stream", "fail");
             stopEverything();
         };
+    };
 
-        const togglePause = async () => {
-            isPaused = !isPaused;
-            await api(`/api/tasks/${task}/${isPaused ? 'pause' : 'resume'}`, 'POST');
-            $('btn-pause').innerText = isPaused ? 'Resume' : 'Pause';
-            $('btn-pause').className = isPaused ? 'btn-indigo px-3 py-1.5 rounded text-xs font-medium' : 'btn-outline px-3 py-1.5 rounded text-xs font-medium';
-            if (isPaused) {
-                setStatus('Paused');
-                logMsg('Task paused.', 'warn');
-            } else {
-                setStatus('Running', true);
-                logMsg('Task resumed.', 'info');
+    const sendApp = a => {
+        api('/api/approvals', 'POST', {task_id: window.tid, action_id: window.aid, approve: a});
+        $('approval').classList.remove('show');
+    };
+
+    // ============== composer UX ==============
+    const ta = $('input');
+    const autoGrow = () => {
+        ta.style.height = 'auto';
+        ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
+    };
+    const updateCharCount = () => {
+        const n = ta.value.length;
+        $('char-count').innerText = n ? `${n} chars` : '';
+    };
+    ta.addEventListener('input', () => { autoGrow(); updateCharCount(); });
+
+    $('send').onclick = start;
+    ta.onkeydown = e => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            start();
+        }
+    };
+
+    window.useExample = (btn) => {
+        ta.value = btn.innerText;
+        ta.focus();
+        autoGrow();
+        updateCharCount();
+    };
+
+    window.addEventListener('keydown', e => {
+        if ($('approval').classList.contains('show')) {
+            if (e.key === 'Enter') { e.preventDefault(); sendApp(true); }
+            if (e.key === 'Escape') { e.preventDefault(); sendApp(false); }
+        }
+    });
+
+    // ============================================================
+    //  TOAST SYSTEM
+    // ============================================================
+    const TOAST_ICONS = {
+        ok:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+        err:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 8v4M12 16h.01"/><circle cx="12" cy="12" r="10"/></svg>',
+        warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>',
+        info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>',
+    };
+    const toast = (msg, kind='info', ttl=3800) => {
+        const host = $('toast-stack');
+        const el = document.createElement('div');
+        el.className = `toast ${kind}`;
+        el.innerHTML = `<span class="t-icon">${TOAST_ICONS[kind] || TOAST_ICONS.info}</span><span class="t-body"></span><button class="t-close" aria-label="Close">×</button>`;
+        el.querySelector('.t-body').innerText = msg;
+        el.querySelector('.t-close').onclick = () => dismiss();
+        host.appendChild(el);
+        let removeTimer;
+        const dismiss = () => {
+            clearTimeout(removeTimer);
+            el.classList.add('out');
+            setTimeout(() => el.remove(), 180);
+        };
+        if (ttl > 0) removeTimer = setTimeout(dismiss, ttl);
+        return dismiss;
+    };
+
+    // ============================================================
+    //  ACTION-TYPE BADGES for the log
+    // ============================================================
+    const actionTag = (type) => {
+        if (!type) return {cls: 'sys', label: 'SYS'};
+        const t = type.toLowerCase();
+        if (t === 'run_command') return {cls:'shell', label:'SHELL'};
+        if (t.startsWith('browser_')) return {cls:'brow', label:'BROW'};
+        if (t.startsWith('text_')) return {cls:'text', label:'TEXT'};
+        if (t === 'read_file' || t === 'write_file' || t === 'move_file') return {cls:'file', label:'FILE'};
+        if (t === 'screenshot' || t === 'ocr_image' || t === 'find_on_screen') return {cls:'scrn', label:'SCRN'};
+        if (t.startsWith('mouse_') || t.endsWith('_click') || t === 'scroll' || t === 'left_click_drag' || t === 'cursor_position') return {cls:'mouse', label:'MOUSE'};
+        if (t === 'keyboard_type' || t === 'key_combo' || t === 'hold_key' || t === 'type_with_delay') return {cls:'kbd', label:'KEY'};
+        if (t === 'api_call') return {cls:'api', label:'API'};
+        return {cls:'sys', label: t.slice(0, 6).toUpperCase()};
+    };
+    const logAction = (actionType, prefix, detail, kind='info') => {
+        const log = $('log');
+        const empty = log.querySelector('.log-empty');
+        if (empty) empty.remove();
+        const tagSpec = actionTag(actionType);
+        const row = document.createElement('div');
+        row.className = 'log-row';
+        const stamp = new Date().toLocaleTimeString([], {hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit'});
+        const ts = document.createElement('span'); ts.className = 'ts'; ts.innerText = stamp;
+        const body = document.createElement('span'); body.className = 'body ' + kind;
+        const tag = document.createElement('span'); tag.className = `tag ${tagSpec.cls}`; tag.innerText = tagSpec.label;
+        body.appendChild(tag);
+        const content = document.createElement('span');
+        content.innerText = `${prefix || ''} ${detail || ''}`.trim();
+        body.appendChild(content);
+        row.appendChild(ts); row.appendChild(body);
+        log.appendChild(row);
+        log.scrollTop = log.scrollHeight;
+        stats.logEvents++;
+        $('log-count').innerText = `${stats.logEvents} event${stats.logEvents === 1 ? '' : 's'}`;
+    };
+
+    // ============================================================
+    //  REFLECTION CARDS — render inline in conversation
+    // ============================================================
+    const renderReflection = (ref) => {
+        removeEmptyState();
+        const card = document.createElement('div');
+        const kind = ref.success === true ? 'success' : (ref.success === false ? 'failure' : '');
+        card.className = 'reflection-card ' + kind;
+        const iconOk = '<svg class="r-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+        const iconWarn = '<svg class="r-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>';
+        const iconEye = '<svg class="r-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+        const icon = kind === 'success' ? iconOk : (kind === 'failure' ? iconWarn : iconEye);
+        card.innerHTML = `${icon}<div><div class="r-head">${kind === 'success' ? 'Subtask verified' : kind === 'failure' ? 'Subtask did not complete' : 'Reflecting on progress'}</div><div class="r-body"></div></div>`;
+        card.querySelector('.r-body').innerText = ref.reason || ref.summary || ref.explanation || 'No notes.';
+        $('messages').appendChild(card);
+        scrollMessages();
+    };
+
+    // ============================================================
+    //  LIGHTBOX with scroll-through history
+    // ============================================================
+    const screenshots = []; // {b64, ts}
+    let lightboxIdx = 0;
+    const openLightbox = (idx) => {
+        if (!screenshots.length) return;
+        lightboxIdx = idx ?? (screenshots.length - 1);
+        const s = screenshots[lightboxIdx];
+        $('lightbox-img').src = `data:image/png;base64,${s.b64}`;
+        $('lightbox-caption').innerText = `frame ${lightboxIdx + 1} / ${screenshots.length}  ·  ${new Date(s.ts).toLocaleTimeString()}`;
+        $('lightbox').classList.add('show');
+    };
+    window.closeLightbox = () => $('lightbox').classList.remove('show');
+    window.stepLightbox = (delta) => {
+        if (!screenshots.length) return;
+        lightboxIdx = (lightboxIdx + delta + screenshots.length) % screenshots.length;
+        openLightbox(lightboxIdx);
+    };
+    $('live-screen-box').onclick = () => {
+        if (screenshots.length) openLightbox();
+    };
+    window.addEventListener('keydown', e => {
+        if ($('lightbox').classList.contains('show')) {
+            if (e.key === 'Escape') { e.preventDefault(); closeLightbox(); }
+            if (e.key === 'ArrowLeft') { e.preventDefault(); stepLightbox(-1); }
+            if (e.key === 'ArrowRight') { e.preventDefault(); stepLightbox(1); }
+        }
+    });
+    // expand shortcut
+    window.addEventListener('keydown', e => {
+        if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'o') {
+            e.preventDefault();
+            if ($('lightbox').classList.contains('show')) closeLightbox();
+            else openLightbox();
+        }
+    });
+
+    // ============================================================
+    //  COMMAND PALETTE (⌘K)
+    // ============================================================
+    const cmdkState = { open: false, q: '', idx: 0, items: [] };
+    const openCmdk = () => {
+        cmdkState.open = true;
+        cmdkState.q = '';
+        cmdkState.idx = 0;
+        $('cmdk-input').value = '';
+        $('cmdk').classList.add('show');
+        renderCmdk();
+        setTimeout(() => $('cmdk-input').focus(), 40);
+    };
+    const closeCmdk = () => {
+        cmdkState.open = false;
+        $('cmdk').classList.remove('show');
+    };
+    const buildCmdkItems = () => {
+        const items = [];
+        // Commands
+        items.push({section:'Actions', label: 'New task', kbd: '⌘N', run: () => { closeCmdk(); $('input').focus(); }, match:'new task create'});
+        items.push({section:'Actions', label: task ? 'Cancel current task' : 'Cancel task (none running)', kbd:'', run: () => { closeCmdk(); if (task) cancelTask(); else toast('No task is running', 'warn'); }, match:'cancel stop end abort'});
+        items.push({section:'Actions', label: isPaused ? 'Resume current task' : 'Pause current task', kbd:'␣', run: () => { closeCmdk(); if (task) togglePause(); else toast('No task is running', 'warn'); }, match:'pause resume'});
+        items.push({section:'Actions', label: 'Expand live screen', kbd:'⌘⇧O', run: () => { closeCmdk(); openLightbox(); }, match:'expand screenshot lightbox fullscreen'});
+        items.push({section:'Actions', label: 'Open Tweaks panel', kbd:'', run: () => { closeCmdk(); toggleTweaks(true); }, match:'tweaks theme density'});
+        // Model switch
+        [...$('model-id').options].forEach(o => {
+            items.push({section:'Switch model', label: o.value, run: () => { $('model-id').value = o.value; toast(`Model → ${o.textContent}`, 'ok', 2200); closeCmdk(); }, match: 'model ' + o.value});
+        });
+        // Recent tasks
+        historyItems.slice(0, 30).forEach((el, i) => {
+            const goal = el.querySelector('.history-goal')?.innerText || '';
+            if (!goal) return;
+            items.push({section:'Recent tasks', label: goal, run: () => { closeCmdk(); el.click(); }, match: 'task ' + goal});
+        });
+        return items;
+    };
+    const renderCmdk = () => {
+        const list = $('cmdk-list');
+        const q = cmdkState.q.toLowerCase().trim();
+        const all = buildCmdkItems();
+        const filtered = q ? all.filter(it => (it.match || it.label).toLowerCase().includes(q)) : all;
+        cmdkState.items = filtered;
+        if (!filtered.length) {
+            list.innerHTML = '<div class="cmdk-empty">No matches for "' + q + '"</div>';
+            return;
+        }
+        cmdkState.idx = Math.min(cmdkState.idx, filtered.length - 1);
+        let html = '';
+        let lastSection = null;
+        filtered.forEach((it, i) => {
+            if (it.section !== lastSection) {
+                html += `<div class="cmdk-section">${it.section}</div>`;
+                lastSection = it.section;
             }
-        };
+            const active = i === cmdkState.idx ? ' active' : '';
+            html += `<div class="cmdk-item${active}" data-i="${i}">
+                <svg class="cmdk-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m9 18 6-6-6-6"/></svg>
+                <span class="cmdk-text"></span>
+                ${it.kbd ? `<span class="cmdk-kbd">${it.kbd}</span>` : ''}
+            </div>`;
+        });
+        list.innerHTML = html;
+        // bind text (avoid HTML injection)
+        [...list.querySelectorAll('.cmdk-item')].forEach(el => {
+            const i = parseInt(el.dataset.i);
+            el.querySelector('.cmdk-text').innerText = filtered[i].label;
+            el.onclick = () => filtered[i].run();
+            el.onmousemove = () => { if (cmdkState.idx !== i) { cmdkState.idx = i; renderCmdk(); } };
+        });
+    };
+    $('cmdk-input').addEventListener('input', e => { cmdkState.q = e.target.value; cmdkState.idx = 0; renderCmdk(); });
+    $('cmdk-input').addEventListener('keydown', e => {
+        if (!cmdkState.items.length) return;
+        if (e.key === 'ArrowDown') { e.preventDefault(); cmdkState.idx = (cmdkState.idx + 1) % cmdkState.items.length; renderCmdk(); }
+        if (e.key === 'ArrowUp')   { e.preventDefault(); cmdkState.idx = (cmdkState.idx - 1 + cmdkState.items.length) % cmdkState.items.length; renderCmdk(); }
+        if (e.key === 'Enter')     { e.preventDefault(); cmdkState.items[cmdkState.idx]?.run(); }
+    });
+    $('cmdk').addEventListener('click', e => { if (e.target === $('cmdk')) closeCmdk(); });
 
-        let currentSubtaskIdx = 0;
-        let planSubtasks = [];
+    window.addEventListener('keydown', e => {
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); cmdkState.open ? closeCmdk() : openCmdk(); }
+        if (cmdkState.open && e.key === 'Escape') { e.preventDefault(); closeCmdk(); }
+        // ⌘N → new task (focus input)
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n' && !cmdkState.open) {
+            e.preventDefault();
+            $('input').focus();
+        }
+        // Space → toggle pause when in background
+        if (e.code === 'Space' && !cmdkState.open && !$('approval').classList.contains('show') && document.activeElement?.tagName !== 'TEXTAREA' && document.activeElement?.tagName !== 'INPUT') {
+            if (task) { e.preventDefault(); togglePause(); }
+        }
+    });
 
-        const listen = () => {
-            sse = new EventSource(`/api/tasks/${task}/stream?token=${KEY}`);
-            sse.onmessage = e => {
-                const d = JSON.parse(e.data);
-
-                if (d.type === 'plan') {
-                    planSubtasks = d.sub_tasks || [];
-                    currentSubtaskIdx = 0;
-                    renderPlan(d);
-                }
-
-                if (d.type === 'status') {
-                    logMsg(d.message);
-                    const runningMatch = d.message && d.message.match(/Executing sub-task:/);
-                    if (runningMatch && planSubtasks[currentSubtaskIdx]) {
-                        if (currentSubtaskIdx > 0 && subtaskEls[planSubtasks[currentSubtaskIdx-1].id].classList.contains('subtask-running')) {
-                            markSubtask(planSubtasks[currentSubtaskIdx-1].id, 'done');
-                        }
-                        markSubtask(planSubtasks[currentSubtaskIdx].id, 'running');
-                    }
-                }
-
-                if (d.type === 'action_start') {
-                    logMsg(`EXEC: ${d.action_type}`, 'info');
-                }
-
-                if (d.type === 'action_result') {
-                    stats.actions++;
-                    $('stat-actions').innerText = stats.actions;
-                    const status = d.ok ? 'ok' : 'fail';
-                    const truncated = (d.output || '').slice(0, 60).replace(/\n/g, ' ');
-                    logMsg(`[${status.toUpperCase()}] ${truncated}`, status);
-                }
-
-                if (d.type === 'screenshot') {
-                    $('screen').src = `data:image/png;base64,${d.data}`;
-                }
-
-                if (d.type === 'reflection') {
-                    if (d.success === false) {
-                        msg(`⚠ Failure: ${d.reason || 'unknown'}`, 'warn');
-                        if (planSubtasks[currentSubtaskIdx]) {
-                            markSubtask(planSubtasks[currentSubtaskIdx].id, 'failed');
-                        }
-                    } else if (d.success === true) {
-                        if (planSubtasks[currentSubtaskIdx]) {
-                            markSubtask(planSubtasks[currentSubtaskIdx].id, 'done');
-                            currentSubtaskIdx++;
-                        }
-                    }
-                }
-
-                if (d.type === 'approval_required') {
-                    $('app-type').innerText = d.action.type;
-                    $('app-reason').innerText = d.reason || "High risk action requires approval.";
-                    $('app-code').innerText = JSON.stringify(d.action.args, null, 2);
-                    hljs.highlightElement($('app-code'));
-                    $('approval').classList.remove('hidden');
-                    window.tid = task;
-                    window.aid = d.action_id;
-                }
-
-                if (d.type === 'error') {
-                    msg(`Error: ${d.message}`, 'error');
-                    setStatus('Error');
-                    stopEverything();
-                }
-
-                if (d.type === 'done') {
-                    if (planSubtasks[currentSubtaskIdx] && d.complete) {
-                        markSubtask(planSubtasks[currentSubtaskIdx].id, 'done');
-                    }
-                    if (d.complete) {
-                        setStatus('Complete');
-                        msg("Task completed successfully! 🎉", "success");
-                        confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
-                    } else {
-                        setStatus('Failed');
-                        msg(`Task failed: ${d.reason}`, "error");
-                    }
-                    stopEverything();
-                }
-
-                if (d.type === 'cancelled') {
-                    setStatus('Cancelled');
-                    stopEverything();
-                }
+    // ============================================================
+    //  TWEAKS PANEL
+    // ============================================================
+    const ACCENTS = [
+        { name: 'terracotta', hue: 48 },
+        { name: 'sky',        hue: 235 },
+        { name: 'emerald',    hue: 150 },
+        { name: 'violet',     hue: 290 },
+        { name: 'rose',       hue: 15 },
+    ];
+    const applyAccent = (hue) => {
+        const r = document.documentElement.style;
+        r.setProperty('--accent',       `oklch(0.74 0.14 ${hue})`);
+        r.setProperty('--accent-hover', `oklch(0.80 0.14 ${hue})`);
+        r.setProperty('--accent-dim',   `oklch(0.74 0.14 ${hue} / 0.14)`);
+        r.setProperty('--accent-edge',  `oklch(0.74 0.14 ${hue} / 0.38)`);
+    };
+    const loadTweaks = () => {
+        const tw = JSON.parse(localStorage.getItem('ai_tw') || '{}');
+        if (tw.hue) applyAccent(tw.hue);
+        if (tw.density === 'compact') document.body.classList.add('density-compact');
+        if (tw.motion === 'reduce') document.body.classList.add('reduce-motion');
+        return tw;
+    };
+    const saveTweaks = (patch) => {
+        const cur = JSON.parse(localStorage.getItem('ai_tw') || '{}');
+        const next = { ...cur, ...patch };
+        localStorage.setItem('ai_tw', JSON.stringify(next));
+        // post to editmode if present
+        try { window.parent.postMessage({type:'__edit_mode_set_keys', edits: next}, '*'); } catch(_){}
+        return next;
+    };
+    const renderTweakSwatches = (tw) => {
+        const host = $('tw-accent');
+        host.innerHTML = '';
+        ACCENTS.forEach(a => {
+            const sw = document.createElement('div');
+            sw.className = 'tw-swatch' + ((tw.hue === a.hue || (!tw.hue && a.hue === 48)) ? ' active' : '');
+            sw.style.background = `oklch(0.74 0.14 ${a.hue})`;
+            sw.title = a.name;
+            sw.onclick = () => { applyAccent(a.hue); saveTweaks({hue: a.hue}); renderTweakSwatches({hue: a.hue}); };
+            host.appendChild(sw);
+        });
+    };
+    const bindTwSeg = (host, key, apply) => {
+        host.querySelectorAll('button').forEach(b => {
+            b.onclick = () => {
+                host.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+                b.classList.add('active');
+                apply(b.dataset.v);
+                saveTweaks({[key]: b.dataset.v});
             };
-            
-            sse.onerror = () => {
-                logMsg("Lost connection to stream.", "error");
-                stopEverything();
-            };
-        };
+        });
+    };
+    window.toggleTweaks = (on) => {
+        const el = $('tweaks');
+        const show = on ?? !el.classList.contains('show');
+        el.classList.toggle('show', show);
+    };
+    const tw = loadTweaks();
+    renderTweakSwatches(tw);
+    if (tw.density === 'compact') $('tw-density').querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.v === 'compact'));
+    if (tw.motion === 'reduce') $('tw-motion').querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.v === 'reduce'));
+    bindTwSeg($('tw-density'), 'density', v => document.body.classList.toggle('density-compact', v === 'compact'));
+    bindTwSeg($('tw-motion'),  'motion',  v => document.body.classList.toggle('reduce-motion', v === 'reduce'));
 
-        const sendApp = a => {
-            api('/api/approvals', 'POST', {task_id: window.tid, action_id: window.aid, approve: a});
-            $('approval').classList.add('hidden');
-        };
 
-        $('send').onclick = start;
-        $('input').onkeydown = e => { 
-            if(e.key === 'Enter' && !e.shiftKey) { 
-                e.preventDefault(); 
-                start(); 
-            } 
-        };
-        
-        window.addEventListener('keydown', e => {
-            if (!$('approval').classList.contains('hidden')) {
-                if (e.key === 'Enter') sendApp(true);
-                if (e.key === 'Escape') sendApp(false);
+    // Handle host edit-mode protocol (must register listener before announcing)
+    window.addEventListener('message', e => {
+        const d = e.data || {};
+        if (d.type === '__activate_edit_mode') toggleTweaks(true);
+        if (d.type === '__deactivate_edit_mode') toggleTweaks(false);
+    });
+    try { window.parent.postMessage({type:'__edit_mode_available'}, '*'); } catch(_){}
+
+    // ============================================================
+    //  GROUPED MODEL SELECTOR — override init() model listing
+    // ============================================================
+    const hydrateModelSelect = (models) => {
+        const sel = $('model-id');
+        sel.innerHTML = '';
+        const groups = {};
+        (models || []).forEach(m => {
+            let provider = 'Other';
+            if (m.startsWith('claude')) provider = 'Anthropic';
+            else if (m.startsWith('gpt')) provider = 'OpenAI';
+            else if (m.startsWith('gemini')) provider = 'Google';
+            else if (m.startsWith('groq')) provider = 'Groq';
+            else if (m.startsWith('openrouter')) provider = 'OpenRouter';
+            (groups[provider] = groups[provider] || []).push(m);
+        });
+        const order = ['Anthropic','OpenAI','Google','Groq','OpenRouter','Other'];
+        order.forEach(p => {
+            if (!groups[p]) return;
+            const og = document.createElement('optgroup');
+            og.label = p;
+            groups[p].forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m;
+                opt.textContent = m.replace('openrouter/','').split('/').pop();
+                og.appendChild(opt);
+            });
+            sel.appendChild(og);
+        });
+    };
+
+    // ============================================================
+    //  HISTORY CLICK → load past task log
+    // ============================================================
+    const bindHistoryItem = (el, taskId) => {
+        if (!taskId) return;
+        el.dataset.tid = taskId;
+        el.style.cursor = 'pointer';
+        el.addEventListener('click', async () => {
+            if (task === taskId) return;
+            if (task && sse) return toast('Cancel the running task first', 'warn');
+            try {
+                const r = await api(`/api/tasks/${taskId}/log`);
+                loadTaskLog(taskId, r.log || [], el);
+            } catch (e) {
+                toast('Could not load task log', 'err');
             }
         });
+    };
+    const loadTaskLog = (taskId, events, sourceEl) => {
+        // Reset UI
+        $('messages').innerHTML = '';
+        $('log').innerHTML = '';
+        subtaskEls = {};
+        stats = { actions: 0, subDone: 0, subTotal: 0, logEvents: 0 };
+        screenshots.length = 0;
+        historyItems.forEach(el => el.classList.remove('active'));
+        sourceEl?.classList.add('active');
+        const firstUser = events.find(e => e.type === 'plan')?.context?.goal;
+        const title = sourceEl?.querySelector('.history-goal')?.innerText || firstUser || 'Past task';
+        $('task-title').innerText = title;
+        $('task-title').classList.remove('idle');
+        setStatus('complete');
+        $('controls').classList.add('hidden');
+        $('stat-actions').innerText = '0';
+        $('stat-time').innerText = '—';
+        // Replay events
+        msg(title, 'user');
+        events.forEach(d => {
+            if (d.type === 'plan') { planSubtasks = d.sub_tasks || []; currentSubtaskIdx = 0; renderPlan(d); }
+            else if (d.type === 'status') logAction(null, d.message, '');
+            else if (d.type === 'action_start') logAction(d.action_type, 'EXEC', d.args_summary || '', 'info');
+            else if (d.type === 'action_result') {
+                stats.actions++; $('stat-actions').innerText = stats.actions;
+                logAction(null, d.ok ? 'OK  ' : 'FAIL', (d.output || '').slice(0, 80).replace(/\n/g,' '), d.ok ? 'ok' : 'fail');
+            }
+            else if (d.type === 'screenshot') {
+                $('screen').classList.add('on');
+                $('screen').src = `data:image/png;base64,${d.data}`;
+                $('screen-placeholder').classList.add('hidden');
+                $('screen-grid').classList.add('hidden');
+                screenshots.push({b64: d.data, ts: Date.now()});
+            }
+            else if (d.type === 'reflection') renderReflection(d);
+            else if (d.type === 'done') {
+                setStatus(d.complete ? 'complete' : 'failed');
+                msg(d.complete ? 'Task completed successfully.' : `Task failed: ${d.reason || ''}`, d.complete ? 'success' : 'error');
+            }
+        });
+        toast('Loaded task log', 'info', 1800);
+    };
 
-        init();
-    </script>
+    init();
+</script>
+<!-- ========== TOAST STACK ========== -->
+<div id="toast-stack" class="toast-stack"></div>
+
+<!-- ========== COMMAND PALETTE ========== -->
+<div id="cmdk" class="cmdk-overlay">
+  <div class="cmdk">
+    <div class="cmdk-input-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="cmdk-input" class="cmdk-input" placeholder="Search tasks, run commands, switch model…" autocomplete="off" spellcheck="false"/>
+      <span class="cmdk-hint">⎋</span>
+    </div>
+    <div id="cmdk-list" class="cmdk-list"></div>
+    <div class="cmdk-footer">
+      <span><kbd>↑↓</kbd> navigate</span>
+      <span><kbd>↵</kbd> select</span>
+      <span><kbd>⎋</kbd> close</span>
+    </div>
+  </div>
+</div>
+
+<!-- ========== LIGHTBOX ========== -->
+<div id="lightbox" class="lightbox">
+  <button class="lightbox-close" aria-label="Close" onclick="closeLightbox()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+  </button>
+  <button class="lightbox-nav prev" aria-label="Previous" onclick="stepLightbox(-1)">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg>
+  </button>
+  <img id="lightbox-img" alt=""/>
+  <button class="lightbox-nav next" aria-label="Next" onclick="stepLightbox(1)">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m9 18 6-6-6-6"/></svg>
+  </button>
+  <div id="lightbox-caption" class="lightbox-caption">frame 0 / 0</div>
+</div>
+
+<!-- ========== TWEAKS PANEL ========== -->
+<div id="tweaks" class="tweaks">
+  <div class="tweaks-head">
+    <span>Tweaks</span>
+    <button class="tw-close" onclick="toggleTweaks(false)" aria-label="Close">×</button>
+  </div>
+  <div class="tweaks-body">
+    <div class="tw-row">
+      <div class="tw-label">Accent</div>
+      <div class="tw-swatches" id="tw-accent"></div>
+    </div>
+    <div class="tw-row">
+      <div class="tw-label">Density</div>
+      <div class="tw-seg" id="tw-density">
+        <button data-v="cozy" class="active">Cozy</button>
+        <button data-v="compact">Compact</button>
+      </div>
+    </div>
+    <div class="tw-row">
+      <div class="tw-label">Motion</div>
+      <div class="tw-seg" id="tw-motion">
+        <button data-v="on" class="active">On</button>
+        <button data-v="reduce">Reduce</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
 </body>
 </html>

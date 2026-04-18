@@ -47,14 +47,32 @@ class SafetyManager:
             "browser_scroll",
         }
         if t in low:
-            return ActionDecision(danger=DangerLevel.low, reason="low risk", requires_approval=False)
+            return ActionDecision(danger=DangerLevel.low, reason="read-only or safe UI action", requires_approval=False)
         if t == "left_click_drag":
-            return ActionDecision(danger=DangerLevel.medium, reason="drag can move data", requires_approval=safe_mode)
+            return ActionDecision(danger=DangerLevel.medium, reason="drag can move or delete UI elements", requires_approval=safe_mode)
         if t in medium:
-            return ActionDecision(danger=DangerLevel.medium, reason="medium risk", requires_approval=safe_mode)
+            return ActionDecision(danger=DangerLevel.medium, reason="UI interaction that may have side effects", requires_approval=safe_mode)
         if t == "key_combo":
             keys = action.args.get("keys", "").lower().replace(" ", "")
-            dangerous = {"ctrl+alt+del", "win+l", "ctrl+alt+t"}
+            dangerous = {"ctrl+alt+del", "win+l", "ctrl+alt+t", "alt+f4"}
             if keys in dangerous:
-                return ActionDecision(danger=DangerLevel.high, reason="dangerous combo", requires_approval=True)
-        return ActionDecision(danger=DangerLevel.low, reason="default", requires_approval=False)
+                return ActionDecision(danger=DangerLevel.high, reason=f"dangerous key combo: {keys}", requires_approval=True)
+            return ActionDecision(danger=DangerLevel.medium, reason="keyboard shortcut", requires_approval=False)
+        if t == "api_call":
+            method = action.args.get("method", "GET").upper()
+            if method in ("POST", "PUT", "PATCH", "DELETE"):
+                return ActionDecision(danger=DangerLevel.high, reason=f"external API mutation ({method})", requires_approval=True)
+            return ActionDecision(danger=DangerLevel.low, reason="read-only API call", requires_approval=False)
+        if t == "ocr_image":
+            return ActionDecision(danger=DangerLevel.low, reason="read-only screen analysis", requires_approval=False)
+        if t == "find_on_screen":
+            return ActionDecision(danger=DangerLevel.low, reason="read-only visual search", requires_approval=False)
+        if t in ("get_clipboard",):
+            return ActionDecision(danger=DangerLevel.low, reason="read clipboard", requires_approval=False)
+        if t in ("set_clipboard",):
+            return ActionDecision(danger=DangerLevel.medium, reason="writes to clipboard", requires_approval=False)
+        if t == "notify":
+            return ActionDecision(danger=DangerLevel.low, reason="system notification", requires_approval=False)
+        if t == "finish":
+            return ActionDecision(danger=DangerLevel.low, reason="task completion signal", requires_approval=False)
+        return ActionDecision(danger=DangerLevel.low, reason="default — unclassified action", requires_approval=False)
