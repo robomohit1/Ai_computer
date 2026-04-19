@@ -408,6 +408,42 @@
     opacity: 1;
     font-weight: 500;
   }
+  /* Premium reasoning bubble */
+  .reasoning-bubble {
+    align-self: stretch;
+    background: linear-gradient(145deg, oklch(0.25 0.02 260 / 0.4), oklch(0.20 0.02 260 / 0.6));
+    backdrop-filter: blur(10px);
+    border: 1px solid oklch(0.74 0.14 48 / 0.2);
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-1);
+    box-shadow: 0 8px 32px -4px rgb(0 0 0 / 0.4), 0 0 0 1px oklch(1 0 0 / 0.05) inset;
+    animation: fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .reasoning-bubble .reasoning-header {
+    display: flex; align-items: center; gap: 10px;
+    font-family: 'Instrument Serif', serif; font-style: italic;
+    font-size: 15px; color: var(--accent);
+    margin-bottom: 10px;
+    letter-spacing: 0.01em;
+  }
+  .reasoning-bubble .reasoning-header svg { 
+    width: 16px; height: 16px; 
+    filter: drop-shadow(0 0 8px var(--accent-edge));
+    animation: pulse 2s infinite ease-in-out;
+  }
+  .reasoning-bubble .reasoning-content {
+    opacity: 0.9;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
+  @keyframes fade-in-up {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
   /* Action result mini-card in main chat */
   .action-bubble {
     align-self: flex-start;
@@ -1607,8 +1643,14 @@
         // Show the agent's reasoning as a distinct bubble before the plan
         if (plan.reasoning) {
             const rb = document.createElement('div');
-            rb.className = 'ai-bubble bubble';
-            rb.innerHTML = `<strong>\uD83E\uDDE0 Agent reasoning:</strong> ${plan.reasoning}`;
+            rb.className = 'reasoning-bubble';
+            rb.innerHTML = `
+                <div class="reasoning-header">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v1a7 7 0 0 1-14 0v-1"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg>
+                    Thinking process
+                </div>
+                <div class="reasoning-content">${plan.reasoning}</div>
+            `;
             $('messages').appendChild(rb);
         }
         
