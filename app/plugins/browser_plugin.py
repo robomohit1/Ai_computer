@@ -23,7 +23,7 @@ async def _ensure_browser(headless: Optional[bool] = None):
         _page = await _browser.new_page(viewport={"width": 1280, "height": 800})
 
 
-async def browser_open(url: str, headless: Optional[bool] = None) -> str:
+async def browser_open(url: str, headless: Optional[bool] = None, **kwargs) -> str:
     await _ensure_browser(headless)
     try:
         await _page.goto(url, wait_until="domcontentloaded", timeout=20000)
@@ -32,13 +32,13 @@ async def browser_open(url: str, headless: Optional[bool] = None) -> str:
     return f"Opened: {_page.url} | Title: {await _page.title()}"
 
 
-async def browser_screenshot() -> str:
+async def browser_screenshot(**kwargs) -> str:
     await _ensure_browser()
     data = await _page.screenshot(type="png")
     return base64.b64encode(data).decode("utf-8")
 
 
-async def browser_click(selector: str) -> str:
+async def browser_click(selector: str, **kwargs) -> str:
     await _ensure_browser()
     try:
         await _page.click(selector, timeout=10000)
@@ -47,13 +47,13 @@ async def browser_click(selector: str) -> str:
     return f"Clicked {selector}"
 
 
-async def browser_click_coords(x: int, y: int) -> str:
+async def browser_click_coords(x: int, y: int, **kwargs) -> str:
     await _ensure_browser()
     await _page.mouse.click(x, y)
     return f"Clicked coords ({x}, {y})"
 
 
-async def browser_type(selector: str, text: str) -> str:
+async def browser_type(selector: str, text: str, **kwargs) -> str:
     await _ensure_browser()
     try:
         await _page.fill(selector, text, timeout=10000)
@@ -62,7 +62,7 @@ async def browser_type(selector: str, text: str) -> str:
     return f"Typed {len(text)} chars into {selector}"
 
 
-async def browser_scroll(direction: str = "down", amount: int = 500) -> str:
+async def browser_scroll(direction: str = "down", amount: int = 500, **kwargs) -> str:
     await _ensure_browser()
     if direction == "down":
         await _page.evaluate(f"window.scrollBy(0, {amount})")
@@ -71,7 +71,7 @@ async def browser_scroll(direction: str = "down", amount: int = 500) -> str:
     return f"Scrolled {direction} {amount}px"
 
 
-async def browser_get_text() -> str:
+async def browser_get_text(**kwargs) -> str:
     """Return visible page text (body.innerText). Capped so small models don't choke."""
     await _ensure_browser()
     try:
@@ -108,7 +108,7 @@ def _flatten_ax_tree(node: dict, depth: int = 0, lines: list | None = None, max_
     return lines
 
 
-async def browser_accessibility_tree() -> str:
+async def browser_accessibility_tree(**kwargs) -> str:
     """Return the page as a compact text outline — the primary 'vision' for free models.
     Compatible with both older Playwright (page.accessibility.snapshot) and newer
     (page.aria_snapshot / ARIA tree via evaluate).
@@ -146,13 +146,13 @@ async def browser_accessibility_tree() -> str:
     return f"URL: {url}\nTitle: {title}\n\n{text}"
 
 
-async def browser_navigate_back() -> str:
+async def browser_navigate_back(**kwargs) -> str:
     await _ensure_browser()
     await _page.go_back()
     return "Navigated back"
 
 
-async def browser_close() -> str:
+async def browser_close(**kwargs) -> str:
     global _pw, _browser, _page
     if _browser:
         await _browser.close()
