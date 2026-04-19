@@ -296,6 +296,14 @@ class AgentService:
                                 "kind": "page_read",
                                 "excerpt": res.output[:600],
                             })
+                        
+                        try:
+                            from .plugins.browser_plugin import browser_screenshot
+                            b_shot = await browser_screenshot()
+                            if b_shot:
+                                await self._emit(task_id, "screenshot", {"data": b_shot})
+                        except Exception:
+                            pass
                     else:
                         if action.type in _SCREENSHOT_ACTIONS or action.type == ActionType.screenshot:
                             screenshot = res.base64_image or _capture_screenshot_b64(screen_width, screen_height)
