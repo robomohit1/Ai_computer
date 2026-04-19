@@ -11,7 +11,9 @@ class SafetyManager:
 
         # Hard-blocked dangerous commands — always require approval regardless of mode
         if t == "run_command":
-            cmd = action.args.get("command", "").lower()
+            cmd = action.args.get("command", "")
+            if isinstance(cmd, list): cmd = " ".join(str(c) for c in cmd)
+            cmd = str(cmd).lower()
             dangerous_patterns = ["rm -rf /", "format ", "del /f /s", ":(){ :|:& };:",
                                   "rd /s /q c:", "rmdir /s /q c:", "shutdown", "reboot"]
             if any(p in cmd for p in dangerous_patterns):
@@ -64,7 +66,9 @@ class SafetyManager:
         if t in medium:
             return ActionDecision(danger=DangerLevel.medium, reason="UI interaction that may have side effects", requires_approval=safe_mode)
         if t == "key_combo":
-            keys = action.args.get("keys", "").lower().replace(" ", "")
+            keys = action.args.get("keys", "")
+            if isinstance(keys, list): keys = "+".join(str(k) for k in keys)
+            keys = str(keys).lower().replace(" ", "")
             dangerous = {"ctrl+alt+del", "win+l", "ctrl+alt+t", "alt+f4"}
             if keys in dangerous:
                 return ActionDecision(danger=DangerLevel.high, reason=f"dangerous key combo: {keys}", requires_approval=True)

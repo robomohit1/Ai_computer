@@ -214,9 +214,13 @@ def detect_task_mode(goal: str, explicit_mode: Optional[str] = None) -> str:
         return explicit_mode
     g = goal.lower()
     computer_use_score = sum(1 for kw in _COMPUTER_USE_KEYWORDS if kw in g)
+    computer_score = sum(1 for kw in _COMPUTER_KEYWORDS if kw in g)
     coding_score = sum(1 for kw in _CODING_KEYWORDS if kw in g)
-    if computer_use_score >= 2 and computer_use_score > coding_score:
+    
+    if computer_use_score > coding_score and computer_use_score >= computer_score:
         return "computer_use"
+    elif computer_score > coding_score:
+        return "computer"
     return "coding"
 
 

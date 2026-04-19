@@ -67,12 +67,18 @@ class ToolExecutor:
 
     def keyboard_type(self, text: str):
         import pyautogui
+        if isinstance(text, list):
+            text = " ".join(str(t) for t in text)
+        text = str(text)
         pyautogui.write(text, interval=0.01)
         return ToolResult(ok=True, output="Typed text")
 
     def key(self, keys: str):
         import pyautogui
-        parts = [p.strip() for p in keys.split("+") if p.strip()]
+        if isinstance(keys, list):
+            parts = [str(p).strip() for p in keys if str(p).strip()]
+        else:
+            parts = [p.strip() for p in str(keys).split("+") if p.strip()]
         pyautogui.hotkey(*parts)
         return ToolResult(ok=True, output=f"Pressed hotkey: {keys}")
 
