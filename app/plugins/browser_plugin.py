@@ -1,26 +1,35 @@
 from __future__ import annotations
 import base64
 import json
+import os
 from typing import Optional
 
 _pw = None
 _browser = None
 _page = None
 
+# Headed by default when BROWSER_HEADED=1 in the env so the user can see
+# the agent driving the browser. Falls back to headless otherwise.
+_DEFAULT_HEADLESS = os.environ.get("BROWSER_HEADED", "").lower() not in ("1", "true", "yes")
 
-async def _ensure_browser(headless: bool = True):
+
+async def _ensure_browser(headless: Optional[bool] = None):
     global _pw, _browser, _page
     if _browser is None:
         from playwright.async_api import async_playwright
         _pw = await async_playwright().start()
-        _browser = await _pw.chromium.launch(headless=headless)
-        _page = await _browser.new_page()
+        use_headless = _DEFAULT_HEADLESS if headless is None else headless
+        _browser = await _pw.chromium.launch(headless=use_headless)
+        _page = await _browser.new_page(viewport={"width": 1280, "height": 800})
 
 
-async def browser_open(url: str, headless: bool = True) -> str:
+async def browser_open(url: str, headless: Optional[bool] = None) -> str:
     await _ensure_browser(headless)
-    await _page.goto(url, wait_until="domcontentloaded")
-    return f"Opened: {_page.url}"
+    try:
+        await _page.goto(url, wait_until="domcontentloaded", timeout=20000)
+    except Exception as e:
+        return f"Navigation error: {type(e).__name__}: {str(e)[:200]}"
+    return f"Opened: {_page.url} | Title: {await _page.title()}"
 
 
 async def browser_screenshot() -> str:
@@ -31,7 +40,10 @@ async def browser_screenshot() -> str:
 
 async def browser_click(selector: str) -> str:
     await _ensure_browser()
-    await _page.click(selector)
+    try:
+        await _page.click(selector, timeout=10000)
+    except Exception as e:
+        return f"Click error on {selector!r}: {type(e).__name__}: {str(e)[:200]}"
     return f"Clicked {selector}"
 
 
@@ -43,8 +55,11 @@ async def browser_click_coords(x: int, y: int) -> str:
 
 async def browser_type(selector: str, text: str) -> str:
     await _ensure_browser()
-    await _page.fill(selector, text)
-    return f"Typed into {selector}"
+    try:
+        await _page.fill(selector, text, timeout=10000)
+    except Exception as e:
+        return f"Type error on {selector!r}: {type(e).__name__}: {str(e)[:200]}"
+    return f"Typed {len(text)} chars into {selector}"
 
 
 async def browser_scroll(direction: str = "down", amount: int = 500) -> str:
@@ -53,17 +68,54 @@ async def browser_scroll(direction: str = "down", amount: int = 500) -> str:
         await _page.evaluate(f"window.scrollBy(0, {amount})")
     else:
         await _page.evaluate(f"window.scrollBy(0, -{amount})")
-    return f"Scrolled {direction}"
+    return f"Scrolled {direction} {amount}px"
 
 
 async def browser_get_text() -> str:
+    """Return visible page text (body.innerText). Capped so small models don't choke."""
     await _ensure_browser()
-    return await _page.content()
+    try:
+        text = await _page.evaluate("document.body ? document.body.innerText : ''")
+    except Exception as e:
+        return f"Error reading text: {e}"
+    url = _page.url
+    text = (text or "").strip()
+    if len(text) > 4000:
+        text = text[:4000] + "\n...(truncated)"
+    return f"URL: {url}\n\n{text}"
+
+
+def _flatten_ax_tree(node: dict, depth: int = 0, lines: list | None = None, max_lines: int = 120) -> list:
+    """Turn the Playwright accessibility snapshot into a compact outline for an LLM."""
+    if lines is None:
+        lines = []
+    if not node or len(lines) >= max_lines:
+        return lines
+    role = node.get("role", "")
+    name = (node.get("name") or "").strip()
+    value = (node.get("value") or "").strip()
+    label_parts = [role]
+    if name:
+        label_parts.append(f'"{name[:80]}"')
+    if value:
+        label_parts.append(f"[value={value[:40]!r}]")
+    lines.append("  " * depth + " ".join(label_parts))
+    for child in node.get("children", []) or []:
+        if len(lines) >= max_lines:
+            lines.append("  " * (depth + 1) + "...(truncated)")
+            break
+        _flatten_ax_tree(child, depth + 1, lines, max_lines)
+    return lines
 
 
 async def browser_accessibility_tree() -> str:
+    """Return the page as a compact text outline — the primary 'vision' for free models."""
     await _ensure_browser()
-    return json.dumps(await _page.accessibility.snapshot())
+    snap = await _page.accessibility.snapshot()
+    if not snap:
+        return f"URL: {_page.url}\n(empty accessibility tree)"
+    lines = _flatten_ax_tree(snap)
+    return f"URL: {_page.url}\nTitle: {await _page.title()}\n\n" + "\n".join(lines)
 
 
 async def browser_navigate_back() -> str:

@@ -12,20 +12,26 @@ async def test_browser_plugin(monkeypatch):
             self.accessibility = AsyncMock()
             self.accessibility.snapshot.return_value = {"role": "document"}
 
-        async def goto(self, url, wait_until="domcontentloaded"):
+        async def goto(self, url, wait_until="domcontentloaded", timeout=None):
             self.url = url
+
+        async def title(self):
+            return "Test Page"
 
         async def screenshot(self, type="png"):
             return b"pngbytes"
 
-        async def click(self, selector):
+        async def click(self, selector, timeout=None):
             self.last_click = selector
 
-        async def fill(self, selector, text):
+        async def fill(self, selector, text, timeout=None):
             self.last_fill = (selector, text)
 
         async def content(self):
             return "hello" * 3000
+
+        async def evaluate(self, script):
+            return ""
 
         async def go_back(self):
             self.url = "back"

@@ -271,6 +271,9 @@ class ToolExecutor:
             ActionType.finish: lambda a: ToolResult(ok=True, output=a.args.get("reason", "Task marked complete by agent.")),
             ActionType.system_info: lambda a: self.system_info(),
             ActionType.list_directory: lambda a: self.list_directory(a.args.get("path", "."), a.args.get("max_depth", 2)),
+            # request_permission is normally intercepted by the agent, but stub
+            # it here so ActionType enum coverage is complete.
+            ActionType.request_permission: lambda a: ToolResult(ok=True, output=f"Permission request for '{a.args.get('scope','')}' noted."),
         }
         if action.type in handlers:
             try:

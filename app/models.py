@@ -56,6 +56,7 @@ class ActionType(str, Enum):
     notify = "notify"
     system_info = "system_info"
     list_directory = "list_directory"
+    request_permission = "request_permission"
 
 
 class Action(BaseModel):

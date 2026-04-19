@@ -50,7 +50,7 @@ class TaskIn(BaseModel):
     task_id: str
     goal: str = Field(..., min_length=5, max_length=2000)
     model: Optional[str] = "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
-    mode: Optional[str] = "auto"  # auto, coding, computer
+    mode: Optional[str] = "auto"  # auto, coding, computer, computer_use
     screen_width: int = 1280
     screen_height: int = 800
 
@@ -68,6 +68,13 @@ class ApprovalIn(BaseModel):
     task_id: str
     action_id: str
     approve: bool
+
+
+class PermissionIn(BaseModel):
+    task_id: str
+    action_id: str
+    grant: bool
+    scope: Optional[str] = None
 
 @app.get("/")
 async def root(): return FileResponse("static/index.html")
@@ -264,3 +271,14 @@ async def stream_task(task_id: str, request: Request, token: Optional[str] = Non
 async def approvals(body: ApprovalIn):
     service.submit_approval(body.task_id, body.action_id, body.approve)
     return {"ok": True}
+
+
+@app.post("/api/permissions", dependencies=[Depends(verify_token)])
+async def permissions(body: PermissionIn):
+    service.submit_permission(body.task_id, body.action_id, body.grant)
+    return {"ok": True, "scope": body.scope, "granted": body.grant}
+
+
+@app.get("/api/permissions/{task_id}", dependencies=[Depends(verify_token)])
+async def list_permissions(task_id: str):
+    return {"task_id": task_id, "granted": service.permissions.granted_scopes(task_id)}
