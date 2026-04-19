@@ -145,7 +145,8 @@ Never output markdown. Never output prose outside JSON."""
 
 COMPUTER_USE_REFLECT_PROMPT = """You are a reflection agent for a browser-automation task.
 Given a sub-task description, the actions that ran, and their outputs (URLs, page text, accessibility trees),
-determine if the sub-task succeeded.
+determine if the sub-task succeeded. 
+Be lenient with intermediate timeouts (like clicking a search result when the search directly navigated to the target page). Focus strictly on whether the ultimate goal of the sub-task was reached based on the new URL and page context.
 Return ONLY valid JSON: {"success": bool, "reason": str, "retry_actions": []}
 If success is false, optionally populate retry_actions with corrective actions using ONLY these types:
 request_permission, browser_open, browser_accessibility_tree, browser_click, browser_type,
@@ -155,6 +156,7 @@ Never output markdown. Never output prose outside JSON."""
 
 COMPUTER_USE_EVALUATE_PROMPT = """You are an evaluation agent for a browser-automation task.
 Given a goal and the action history (URLs visited, page text observed, form submissions), determine if the goal is complete.
+Be resilient against minor subtask failures or timeouts. Base your evaluation strictly on whether the FINAL recorded page URL and observed content indicate that the user's ultimate goal has been accomplished.
 Return ONLY valid JSON: {"complete": bool, "reason": str}
 Never output markdown. Never output prose outside JSON."""
 
