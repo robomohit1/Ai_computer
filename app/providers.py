@@ -367,7 +367,18 @@ class PlannerProvider:
                     if resp.status_code != 200:
                         print("OPENROUTER ERROR:", resp.text)
                     resp.raise_for_status()
-                    return resp.json()["choices"][0]["message"]["content"]
+                    resp_json = resp.json()
+                    # OpenRouter can return 200 + {"error": {...}} when rate-limited or quota-exceeded
+                    if "error" in resp_json:
+                        err_msg = resp_json["error"].get("message", str(resp_json["error"]))
+                        if attempt < 2:
+                            print(f"OPENROUTER SOFT ERROR (attempt {attempt+1}): {err_msg}")
+                            time.sleep(2 ** attempt)
+                            continue
+                        raise RuntimeError(f"OpenRouter error: {err_msg}")
+                    if "choices" not in resp_json:
+                        raise RuntimeError(f"Unexpected OpenRouter response: {str(resp_json)[:200]}")
+                    return resp_json["choices"][0]["message"]["content"]
             except httpx.HTTPStatusError as e:
                 last_err = e
                 if e.response.status_code == 429 or e.response.status_code >= 500:

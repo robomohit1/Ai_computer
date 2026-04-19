@@ -109,13 +109,41 @@ def _flatten_ax_tree(node: dict, depth: int = 0, lines: list | None = None, max_
 
 
 async def browser_accessibility_tree() -> str:
-    """Return the page as a compact text outline — the primary 'vision' for free models."""
+    """Return the page as a compact text outline — the primary 'vision' for free models.
+    Compatible with both older Playwright (page.accessibility.snapshot) and newer
+    (page.aria_snapshot / ARIA tree via evaluate).
+    """
     await _ensure_browser()
-    snap = await _page.accessibility.snapshot()
-    if not snap:
-        return f"URL: {_page.url}\n(empty accessibility tree)"
-    lines = _flatten_ax_tree(snap)
-    return f"URL: {_page.url}\nTitle: {await _page.title()}\n\n" + "\n".join(lines)
+    url = _page.url
+    title = await _page.title()
+    snap = None
+
+    # Try the modern API first (Playwright >= 1.46)
+    try:
+        raw = await _page.aria_snapshot()
+        if raw:
+            lines = raw.splitlines()[:120]
+            return f"URL: {url}\nTitle: {title}\n\n" + "\n".join(lines)
+    except Exception:
+        pass
+
+    # Fallback: older page.accessibility.snapshot()
+    try:
+        snap = await _page.accessibility.snapshot()  # type: ignore[attr-defined]
+    except Exception:
+        snap = None
+
+    if snap:
+        lines = _flatten_ax_tree(snap)
+        return f"URL: {url}\nTitle: {title}\n\n" + "\n".join(lines)
+
+    # Last resort: body text
+    try:
+        text = await _page.evaluate("document.body ? document.body.innerText : ''")
+        text = (text or "").strip()[:3000]
+    except Exception as e:
+        text = f"(Could not read page: {e})"
+    return f"URL: {url}\nTitle: {title}\n\n{text}"
 
 
 async def browser_navigate_back() -> str:
