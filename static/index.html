@@ -1551,7 +1551,9 @@
         const el = document.createElement('div');
         el.className = 'status-bubble bubble' + (isThinking ? ' thinking' : '');
         if (isThinking) {
-            el.innerHTML = `${text} <span class="thinking-dots"><span>.</span><span>.</span><span>.</span></span>`;
+            // Strip trailing dots so we don't get "Thinking... ..."
+            const clean = text.replace(/\.{2,}\s*$/, '');
+            el.innerHTML = `${clean}<span class="thinking-dots"><span>.</span><span>.</span><span>.</span></span>`;
         } else {
             el.innerText = text;
         }
@@ -1598,14 +1600,24 @@
 
     const renderPlan = plan => {
         removeEmptyState();
+        // Clear thinking status — the plan replaces it
+        if (_lastStatusEl && _lastStatusEl.parentNode) _lastStatusEl.remove();
+        _lastStatusEl = null;
+        
+        // Show the agent's reasoning as a distinct bubble before the plan
+        if (plan.reasoning) {
+            const rb = document.createElement('div');
+            rb.className = 'ai-bubble bubble';
+            rb.innerHTML = `<strong>\uD83E\uDDE0 Agent reasoning:</strong> ${plan.reasoning}`;
+            $('messages').appendChild(rb);
+        }
+        
         const planContainer = document.createElement('div');
         planContainer.className = 'plan-card';
         planContainer.innerHTML = `
-            <div class="plan-label">Hierarchical plan</div>
-            <div class="plan-reasoning"></div>
+            <div class="plan-label">Execution plan</div>
             <div class="subtask-list"></div>
         `;
-        planContainer.querySelector('.plan-reasoning').innerText = plan.reasoning || 'No reasoning provided.';
         const list = planContainer.querySelector('.subtask-list');
         stats.subTotal = (plan.sub_tasks || []).length;
         stats.subDone = 0;
