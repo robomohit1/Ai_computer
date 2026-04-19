@@ -195,6 +195,7 @@
   .sidebar-footer {
     border-top: 1px solid var(--border);
     padding: 14px 16px 16px;
+    flex-shrink: 0;
   }
   .footer-label {
     font-size: 10.5px; font-weight: 600; color: var(--text-3);
@@ -211,7 +212,7 @@
     transform: translateY(-75%) rotate(45deg);
     pointer-events: none;
   }
-  #model-id {
+  #model-id, #mode-id {
     appearance: none;
     width: 100%;
     background: var(--bg-2);
@@ -224,8 +225,9 @@
     outline: none;
     transition: border-color 120ms ease;
   }
-  #model-id:focus, #model-id:hover { border-color: var(--border-strong); }
-  #model-id option { background: var(--bg-2); color: var(--text-0); }
+  #model-id:focus, #model-id:hover,
+  #mode-id:focus, #mode-id:hover { border-color: var(--border-strong); }
+  #model-id option, #mode-id option { background: var(--bg-2); color: var(--text-0); }
 
   /* ============ center panel ============ */
   .center { background: var(--bg-0); position: relative; }
@@ -1224,6 +1226,78 @@
 </style>
 </head>
 <body>
+
+<!-- ===== Desktop Titlebar (only visible in Electron) ===== -->
+<div class="desktop-titlebar" id="desktop-titlebar" style="display:none">
+  <div class="titlebar-drag">
+    <span class="titlebar-title">AI Computer</span>
+  </div>
+  <div class="titlebar-controls">
+    <button class="tb-btn tb-minimize" id="tb-min" aria-label="Minimize">
+      <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg>
+    </button>
+    <button class="tb-btn tb-maximize" id="tb-max" aria-label="Maximize">
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1"><rect x="0.5" y="0.5" width="9" height="9"/></svg>
+    </button>
+    <button class="tb-btn tb-close" id="tb-close" aria-label="Close">
+      <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.2"><line x1="0" y1="0" x2="10" y2="10"/><line x1="10" y1="0" x2="0" y2="10"/></svg>
+    </button>
+  </div>
+</div>
+<style>
+  /* Desktop titlebar — only shown when body has 'desktop' class */
+  .desktop-titlebar {
+    height: 32px;
+    background: var(--bg-1, #322c28);
+    border-bottom: 1px solid var(--border, #3c3632);
+    display: flex; align-items: center;
+    position: fixed; top: 0; left: 0; right: 0;
+    z-index: 9999;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+  .titlebar-drag {
+    flex: 1;
+    -webkit-app-region: drag;
+    display: flex; align-items: center;
+    padding-left: 14px;
+    height: 100%;
+  }
+  .titlebar-title {
+    font-size: 12px; font-weight: 500;
+    color: var(--text-2, #8a7f76);
+    letter-spacing: -0.01em;
+    user-select: none;
+  }
+  .titlebar-controls {
+    display: flex; align-items: center;
+    -webkit-app-region: no-drag;
+    height: 100%;
+  }
+  .tb-btn {
+    width: 46px; height: 32px;
+    border: none; background: transparent;
+    color: var(--text-2, #8a7f76);
+    display: grid; place-items: center;
+    cursor: pointer;
+    transition: background 100ms ease, color 100ms ease;
+  }
+  .tb-btn:hover { background: var(--bg-3, #3c3632); color: var(--text-0, #f5f0e8); }
+  .tb-close:hover { background: #c42b1c; color: white; }
+  /* Push app content down when titlebar is visible */
+  body.desktop .app { padding-top: 32px; }
+  body.desktop .sidebar { padding-top: 32px; }
+  body.desktop .desktop-titlebar { display: flex !important; }
+</style>
+<script>
+  // Detect Electron desktop mode and activate titlebar
+  if (window.electronAPI && window.electronAPI.isDesktop) {
+    document.body.classList.add('desktop');
+    document.getElementById('desktop-titlebar').style.display = 'flex';
+    document.getElementById('tb-min').onclick  = () => window.electronAPI.minimize();
+    document.getElementById('tb-max').onclick  = () => window.electronAPI.maximize();
+    document.getElementById('tb-close').onclick = () => window.electronAPI.close();
+  }
+</script>
 
 <div class="app">
 
