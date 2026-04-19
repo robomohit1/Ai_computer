@@ -17,6 +17,7 @@ from .models import (
     ToolError,
     ToolResult,
 )
+from .permissions import PermissionStore, scope_for_action
 from .providers import PlannerProvider, _capture_screenshot_b64, detect_task_mode
 from .safety import SafetyManager
 from .text_editor import TextEditorTool
@@ -42,12 +43,14 @@ class AgentService:
         self.log_emitter = log_emitter
         self.memory = MemoryStore(workspace)
         self.safety = SafetyManager()
+        self.permissions = PermissionStore()
         self.plugin_registry = PluginRegistry()
         self.plugin_registry.load_defaults()
         self.tools = ToolExecutor(workspace, plugin_registry=self.plugin_registry)
         self._active_tasks: dict[str, asyncio.Task] = {}
         self._paused_tasks: set[str] = set()
         self._approvals: Dict[str, asyncio.Future] = {}
+        self._permission_waits: Dict[str, asyncio.Future] = {}
         self._pause_events: Dict[str, asyncio.Event] = {}
         self._on_task_complete: Optional[Callable[[str, str, str], None]] = None
 
@@ -88,6 +91,7 @@ class AgentService:
     ):
         provider = PlannerProvider(model=model)
         is_coding = mode == "coding"
+        is_computer_use = mode == "computer_use"
 
         # Brief delay so the SSE EventSource in the browser has time to connect
         # before we start emitting events (prevents the race where events fire
@@ -113,8 +117,8 @@ class AgentService:
                 })
                 env_context = f"\n\nSystem environment:\n{env_result.output}\nUse these EXACT paths in your actions — do NOT use template variables or placeholders."
             
-            # In coding mode, skip screenshot capture entirely
-            screenshot_b64 = None if is_coding else _capture_screenshot_b64(screen_width, screen_height)
+            # Coding and computer_use modes skip screenshots (DOM/text-only)
+            screenshot_b64 = None if (is_coding or is_computer_use) else _capture_screenshot_b64(screen_width, screen_height)
 
             # Run the sync LLM call in a thread so the event loop stays free for SSE streaming
             await self._emit(task_id, "status", {"message": "Thinking..."})
@@ -158,6 +162,62 @@ class AgentService:
                         "explanation": action.explanation,
                         "args_summary": _summarize_args(action.type.value, action.args),
                     })
+
+                    # Handle request_permission specially: ask the user, record grant/deny,
+                    # then continue (don't dispatch to tools.py).
+                    if action.type == ActionType.request_permission:
+                        scope = action.args.get("scope", "")
+                        reason = action.args.get("reason", action.explanation or "")
+                        if self.permissions.is_granted(task_id, scope):
+                            res = ToolResult(ok=True, output=f"Permission for '{scope}' already granted.")
+                        else:
+                            await self._emit(task_id, "permission_required", {
+                                "action_id": action.id,
+                                "scope": scope,
+                                "reason": reason,
+                                "explanation": action.explanation,
+                            })
+                            granted = await self._wait_for_permission(task_id, action.id)
+                            if granted:
+                                self.permissions.grant(task_id, scope)
+                                res = ToolResult(ok=True, output=f"Permission granted for scope '{scope}'.")
+                            else:
+                                self.permissions.deny(task_id, scope)
+                                await self._emit(task_id, "status", {"message": f"Permission denied for '{scope}'. Stopping."})
+                                self._finalize(task_id, "cancelled", f"user denied permission for scope '{scope}'")
+                                await self._emit(task_id, "done", {"complete": False, "reason": f"Permission denied: {scope}"})
+                                return
+                        results.append(res.output)
+                        actions_taken.append(action.model_dump())
+                        self.memory.add_action_result(task_id, action.id, res.output)
+                        history.append(f"Action: request_permission({scope}) -> {res.output}")
+                        await self._emit(task_id, "action_result", {
+                            "action_id": action.id,
+                            "ok": res.ok,
+                            "output": res.output,
+                            "action_type": action.type.value,
+                            "args_summary": scope,
+                        })
+                        continue
+
+                    # Enforce permission scope for browser/filesystem/shell actions
+                    needed_scope = scope_for_action(action.type.value, action.args)
+                    if needed_scope and not self.permissions.is_granted(task_id, needed_scope.value):
+                        # Auto-prompt for the scope if the agent forgot to request it
+                        await self._emit(task_id, "permission_required", {
+                            "action_id": action.id,
+                            "scope": needed_scope.value,
+                            "reason": f"Action '{action.type.value}' needs '{needed_scope.value}' access.",
+                            "explanation": action.explanation,
+                        })
+                        granted = await self._wait_for_permission(task_id, action.id)
+                        if not granted:
+                            self.permissions.deny(task_id, needed_scope.value)
+                            await self._emit(task_id, "status", {"message": f"Permission denied for '{needed_scope.value}'. Stopping."})
+                            self._finalize(task_id, "cancelled", f"user denied permission for scope '{needed_scope.value}'")
+                            await self._emit(task_id, "done", {"complete": False, "reason": f"Permission denied: {needed_scope.value}"})
+                            return
+                        self.permissions.grant(task_id, needed_scope.value)
 
                     if action.requires_approval or decision.requires_approval:
                         await self._emit(task_id, "approval_required", {
@@ -216,6 +276,26 @@ class AgentService:
                                 "output": res.output,
                                 "ok": res.ok,
                             })
+                    elif is_computer_use:
+                        # Emit browser-specific UI events so the frontend can show
+                        # a mini page-state panel instead of screenshots.
+                        if action.type.value == "browser_open":
+                            await self._emit(task_id, "browser_event", {
+                                "kind": "navigate",
+                                "url": action.args.get("url", ""),
+                                "result": res.output[:200],
+                            })
+                        elif action.type.value in ("browser_click", "browser_type", "browser_scroll"):
+                            await self._emit(task_id, "browser_event", {
+                                "kind": action.type.value,
+                                "selector": action.args.get("selector", ""),
+                                "result": res.output[:200],
+                            })
+                        elif action.type.value in ("browser_accessibility_tree", "browser_get_text"):
+                            await self._emit(task_id, "browser_event", {
+                                "kind": "page_read",
+                                "excerpt": res.output[:600],
+                            })
                     else:
                         if action.type in _SCREENSHOT_ACTIONS or action.type == ActionType.screenshot:
                             screenshot = res.base64_image or _capture_screenshot_b64(screen_width, screen_height)
@@ -223,7 +303,7 @@ class AgentService:
 
                 # Reflection — run sync LLM in thread
                 await self._emit(task_id, "status", {"message": "Reflecting on progress..."})
-                reflect_screenshot = None if is_coding else _capture_screenshot_b64(screen_width, screen_height)
+                reflect_screenshot = None if (is_coding or is_computer_use) else _capture_screenshot_b64(screen_width, screen_height)
                 reflection = await asyncio.to_thread(
                     provider.reflect_on_subtask,
                     sub_task.description,
@@ -264,7 +344,7 @@ class AgentService:
                     
                     if consecutive_fails > 2:
                         await self._emit(task_id, "status", {"message": "Multiple failures detected. Re-planning..."})
-                        replan_screenshot = None if is_coding else _capture_screenshot_b64(screen_width, screen_height)
+                        replan_screenshot = None if (is_coding or is_computer_use) else _capture_screenshot_b64(screen_width, screen_height)
                         plan = await asyncio.to_thread(
                             provider.plan_hierarchical,
                             goal + f" (Re-planning after failures. History: {history[-5:]})",
@@ -279,7 +359,7 @@ class AgentService:
 
             # Final Evaluation — run sync LLM in thread
             await self._emit(task_id, "status", {"message": "Evaluating results..."})
-            eval_screenshot = None if is_coding else _capture_screenshot_b64(screen_width, screen_height)
+            eval_screenshot = None if (is_coding or is_computer_use) else _capture_screenshot_b64(screen_width, screen_height)
             eval_res = await asyncio.to_thread(
                 provider.evaluate, goal, history, eval_screenshot, mode
             )
@@ -320,6 +400,19 @@ class AgentService:
         fut_id = f"{task_id}:{action_id}"
         if fut_id in self._approvals:
             self._approvals[fut_id].set_result(approved)
+
+    async def _wait_for_permission(self, task_id: str, action_id: str) -> bool:
+        fut_id = f"{task_id}:{action_id}"
+        self._permission_waits[fut_id] = asyncio.Future()
+        try:
+            return await self._permission_waits[fut_id]
+        finally:
+            self._permission_waits.pop(fut_id, None)
+
+    def submit_permission(self, task_id: str, action_id: str, granted: bool):
+        fut_id = f"{task_id}:{action_id}"
+        if fut_id in self._permission_waits:
+            self._permission_waits[fut_id].set_result(granted)
 
     def cancel_task(self, task_id: str) -> bool:
         if task_id in self._active_tasks:

@@ -86,4 +86,7 @@ class SafetyManager:
             return ActionDecision(danger=DangerLevel.low, reason="system notification", requires_approval=False)
         if t == "finish":
             return ActionDecision(danger=DangerLevel.low, reason="task completion signal", requires_approval=False)
+        if t == "request_permission":
+            # The action itself is the user consent flow — no extra approval.
+            return ActionDecision(danger=DangerLevel.low, reason="permission request", requires_approval=False)
         return ActionDecision(danger=DangerLevel.low, reason="default — unclassified action", requires_approval=False)

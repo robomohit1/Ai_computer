@@ -101,6 +101,63 @@ Given a goal, the action history (file writes, command outputs, etc.), determine
 Return ONLY valid JSON: {"complete": bool, "reason": str}
 Never output markdown. Never output prose outside JSON."""
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  COMPUTER USE MODE  — DOM/accessibility-tree based, NO screenshots.
+#  Tuned for small free models: short prompt, narrow action vocabulary.
+# ──────────────────────────────────────────────────────────────────────────────
+COMPUTER_USE_SYSTEM_PROMPT = """You are a browser-automation agent. You read pages as text via the accessibility tree — NEVER assume pixel coordinates.
+Return ONLY valid JSON with shape:
+{
+  "reasoning": str,
+  "overall_complete": bool,
+  "sub_tasks": [
+    {
+      "id": str,
+      "description": str,
+      "actions": [{"id": str, "type": str, "args": object, "explanation": str, "requires_approval": false}]
+    }
+  ]
+}
+
+Available actions (use ONLY these):
+- request_permission: {"scope": "browser"|"google_sheets", "reason": str}  — MUST be the FIRST action. Ask the user for access.
+- browser_open: {"url": str}  — open a URL (full https:// URL required)
+- browser_accessibility_tree: {}  — read the current page as a structured text tree (use this BEFORE clicking/typing to find what's on the page)
+- browser_click: {"selector": str}  — CSS selector (e.g. 'button[name="btnK"]', 'input[type="submit"]', '#id', '.class')
+- browser_type: {"selector": str, "text": str}  — fill a text field
+- browser_scroll: {"direction": "up"|"down", "amount": int}
+- browser_get_text: {}  — get visible page text (fallback if accessibility tree is too noisy)
+- browser_navigate_back: {}
+- browser_close: {}
+- wait_action: {"seconds": float}  — wait for page to load (use 1-3 seconds after navigation)
+- finish: {"reason": str}
+
+Rules:
+1. Your FIRST action in the first sub-task MUST be request_permission with the right scope (google_sheets if the task involves Google Sheets, otherwise browser).
+2. After browser_open or any click that navigates, wait 1-2 seconds then call browser_accessibility_tree to see the new page state.
+3. Use CSS selectors based on the accessibility tree output. Prefer stable selectors: input[type=...], button[aria-label=...], #id, [role=...].
+4. NEVER use pixel coordinates. NEVER use mouse_click, keyboard_type, or screenshot. Those are blocked in this mode.
+5. For Google Sheets: open https://docs.google.com/spreadsheets/ and use browser_accessibility_tree to see cells. Click a cell then browser_type to write.
+6. Keep sub-tasks small (2-4 actions each) so reflection can correct errors quickly.
+Never output markdown. Never output prose outside JSON."""
+
+
+COMPUTER_USE_REFLECT_PROMPT = """You are a reflection agent for a browser-automation task.
+Given a sub-task description, the actions that ran, and their outputs (URLs, page text, accessibility trees),
+determine if the sub-task succeeded.
+Return ONLY valid JSON: {"success": bool, "reason": str, "retry_actions": []}
+If success is false, optionally populate retry_actions with corrective actions using ONLY these types:
+request_permission, browser_open, browser_accessibility_tree, browser_click, browser_type,
+browser_scroll, browser_get_text, browser_navigate_back, browser_close, wait_action, finish.
+Never output markdown. Never output prose outside JSON."""
+
+
+COMPUTER_USE_EVALUATE_PROMPT = """You are an evaluation agent for a browser-automation task.
+Given a goal and the action history (URLs visited, page text observed, form submissions), determine if the goal is complete.
+Return ONLY valid JSON: {"complete": bool, "reason": str}
+Never output markdown. Never output prose outside JSON."""
+
 REFLECT_SYSTEM_PROMPT = """You are a reflection agent for an autonomous computer agent.
 Given a completed sub-task description, the actions that ran, their results, and a screenshot of the
 current screen, determine if the sub-task succeeded.
@@ -140,14 +197,25 @@ _COMPUTER_KEYWORDS = [
 ]
 
 
+_COMPUTER_USE_KEYWORDS = [
+    "browser", "chrome", "firefox", "web", "website", "google search",
+    "google sheets", "spreadsheet", "sheets", "docs.google", "gmail",
+    "youtube", "wikipedia", "navigate to", "open url", "open site",
+    "fill out form", "search for", "submit form", "log into", "log in to",
+    "sign in to", "visit", "webpage",
+]
+
+
 def detect_task_mode(goal: str, explicit_mode: Optional[str] = None) -> str:
-    """Return 'coding' or 'computer'. If explicit_mode is set, honour it."""
-    if explicit_mode and explicit_mode in ("coding", "computer"):
+    """Return 'coding', 'computer_use', or 'computer'. If explicit_mode is set, honour it."""
+    if explicit_mode and explicit_mode in ("coding", "computer", "computer_use"):
         return explicit_mode
     g = goal.lower()
+    computer_use_score = sum(1 for kw in _COMPUTER_USE_KEYWORDS if kw in g)
     coding_score = sum(1 for kw in _CODING_KEYWORDS if kw in g)
-    computer_score = sum(1 for kw in _COMPUTER_KEYWORDS if kw in g)
-    return "coding" if coding_score >= computer_score else "coding"  # default to coding for now
+    if computer_use_score >= 2 and computer_use_score > coding_score:
+        return "computer_use"
+    return "coding"
 
 
 def get_scale_factor(width: int, height: int) -> float:
@@ -299,7 +367,18 @@ class PlannerProvider:
                     if resp.status_code != 200:
                         print("OPENROUTER ERROR:", resp.text)
                     resp.raise_for_status()
-                    return resp.json()["choices"][0]["message"]["content"]
+                    resp_json = resp.json()
+                    # OpenRouter can return 200 + {"error": {...}} when rate-limited or quota-exceeded
+                    if "error" in resp_json:
+                        err_msg = resp_json["error"].get("message", str(resp_json["error"]))
+                        if attempt < 2:
+                            print(f"OPENROUTER SOFT ERROR (attempt {attempt+1}): {err_msg}")
+                            time.sleep(2 ** attempt)
+                            continue
+                        raise RuntimeError(f"OpenRouter error: {err_msg}")
+                    if "choices" not in resp_json:
+                        raise RuntimeError(f"Unexpected OpenRouter response: {str(resp_json)[:200]}")
+                    return resp_json["choices"][0]["message"]["content"]
             except httpx.HTTPStatusError as e:
                 last_err = e
                 if e.response.status_code == 429 or e.response.status_code >= 500:
@@ -401,6 +480,9 @@ class PlannerProvider:
         if mode == "coding":
             system = CODING_SYSTEM_PROMPT
             raw_text = self._call_llm(system, prompt)  # no screenshot for coding
+        elif mode == "computer_use":
+            system = COMPUTER_USE_SYSTEM_PROMPT
+            raw_text = self._call_llm(system, prompt)  # no screenshot — DOM-based
         else:
             system = HIERARCHICAL_SYSTEM_PROMPT
             raw_text = self._call_llm(system, prompt, latest_screenshot_b64)
@@ -422,6 +504,14 @@ class PlannerProvider:
                 "Based on the action results, did this sub-task succeed?"
             )
             raw_text = self._call_llm(CODING_REFLECT_PROMPT, prompt)  # no screenshot
+        elif mode == "computer_use":
+            prompt = (
+                f"Sub-task: {description}\n\n"
+                f"Actions taken:\n{json.dumps(actions, indent=2)}\n\n"
+                f"Results (page text / accessibility trees / URLs):\n{json.dumps(results, indent=2)[:8000]}\n\n"
+                "Based on the action results, did this sub-task succeed?"
+            )
+            raw_text = self._call_llm(COMPUTER_USE_REFLECT_PROMPT, prompt)  # no screenshot
         else:
             prompt = (
                 f"Sub-task: {description}\n\n"
@@ -440,6 +530,8 @@ class PlannerProvider:
         prompt = f"Goal: {goal}\n\nRecent action history:\n" + "\n".join(recent) + "\n\nIs the overall goal now complete?"
         if mode == "coding":
             raw_text = self._call_llm(CODING_EVALUATE_PROMPT, prompt)  # no screenshot
+        elif mode == "computer_use":
+            raw_text = self._call_llm(COMPUTER_USE_EVALUATE_PROMPT, prompt)  # no screenshot
         else:
             raw_text = self._call_llm(EVALUATE_SYSTEM_PROMPT, prompt, latest_screenshot_b64)
         return _extract_json(raw_text)

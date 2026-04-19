@@ -1219,6 +1219,14 @@
       <div class="model-select-wrap">
         <select id="model-id"></select>
       </div>
+      <div class="footer-label" style="margin-top:10px;">Mode</div>
+      <div class="model-select-wrap">
+        <select id="mode-id">
+          <option value="auto">Auto (detect from goal)</option>
+          <option value="coding">Coding (files &amp; shell)</option>
+          <option value="computer_use">Computer Use (browser, asks permission)</option>
+        </select>
+      </div>
     </div>
   </aside>
 
@@ -1357,6 +1365,24 @@
       <div class="modal-actions">
         <button class="btn" onclick="sendApp(false)">Deny <kbd>Esc</kbd></button>
         <button class="btn accent" onclick="sendApp(true)">Approve <kbd>↵</kbd></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== PERMISSION MODAL ========== -->
+<div id="permission" class="modal-overlay">
+  <div class="modal-card">
+    <div class="modal-head">
+      <span class="type-tag" id="perm-scope">BROWSER</span>
+      <h2>Permission requested</h2>
+    </div>
+    <div class="modal-body">
+      <p class="reason" id="perm-reason">The agent wants access to an app on your computer.</p>
+      <div class="code-block"><pre><code id="perm-code" class="language-json"></code></pre></div>
+      <div class="modal-actions">
+        <button class="btn" onclick="sendPerm(false)">Deny <kbd>Esc</kbd></button>
+        <button class="btn accent" onclick="sendPerm(true)">Allow <kbd>↵</kbd></button>
       </div>
     </div>
   </div>
@@ -1710,7 +1736,8 @@
 
         logMsg('Initializing task...', 'info');
         try {
-            await api('/api/tasks', 'POST', {task_id:task, goal, model:$('model-id').value, mode:'auto'});
+            const modeSel = $('mode-id') ? $('mode-id').value : 'auto';
+            await api('/api/tasks', 'POST', {task_id:task, goal, model:$('model-id').value, mode: modeSel});
             listen();
         } catch (e) {
             setStatus('error');
@@ -1854,6 +1881,29 @@
                 toast('Agent is waiting for approval', 'warn', 6000);
             }
 
+            if (d.type === 'permission_required') {
+                const scope = (d.scope || 'app').toUpperCase();
+                $('perm-scope').innerText = scope;
+                $('perm-reason').innerText = d.reason || d.explanation || `The agent needs access to ${scope}.`;
+                $('perm-code').innerText = JSON.stringify({scope: d.scope, explanation: d.explanation || ''}, null, 2);
+                try { hljs.highlightElement($('perm-code')); } catch(err) {}
+                $('permission').classList.add('show');
+                window.tid = task;
+                window.paid = d.action_id;
+                window.pscope = d.scope;
+                toast(`Agent asks to use ${scope}`, 'warn', 6000);
+                logAction(d.action_id, 'PERMISSION', `Requested: ${d.scope}`, 'info');
+            }
+
+            if (d.type === 'browser_event') {
+                const k = d.kind || 'browser';
+                let detail = '';
+                if (k === 'navigate') detail = d.url || '';
+                else if (k === 'page_read') detail = (d.excerpt || '').slice(0, 120).replace(/\s+/g,' ');
+                else detail = d.selector || '';
+                logAction(null, k.toUpperCase(), detail, 'info');
+            }
+
             if (d.type === 'error') {
                 msg(`Error: ${d.message}`, 'error');
                 setStatus('error');
@@ -1922,6 +1972,12 @@
         $('approval').classList.remove('show');
     };
 
+    const sendPerm = g => {
+        api('/api/permissions', 'POST', {task_id: window.tid, action_id: window.paid, grant: g, scope: window.pscope});
+        $('permission').classList.remove('show');
+        logAction(window.paid, 'PERMISSION', g ? `Allowed: ${window.pscope}` : `Denied: ${window.pscope}`, g ? 'ok' : 'fail');
+    };
+
     // ============== composer UX ==============
     const ta = $('input');
     const autoGrow = () => {
@@ -1953,6 +2009,10 @@
         if ($('approval').classList.contains('show')) {
             if (e.key === 'Enter') { e.preventDefault(); sendApp(true); }
             if (e.key === 'Escape') { e.preventDefault(); sendApp(false); }
+        }
+        if ($('permission') && $('permission').classList.contains('show')) {
+            if (e.key === 'Enter') { e.preventDefault(); sendPerm(true); }
+            if (e.key === 'Escape') { e.preventDefault(); sendPerm(false); }
         }
     });
 
